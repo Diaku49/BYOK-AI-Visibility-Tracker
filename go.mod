@@ -1,3 +1,5 @@
 module github.com/Diaku49/AI-visibility-tracker
 
 go 1.26.4
+
+require github.com/google/uuid v1.6.0

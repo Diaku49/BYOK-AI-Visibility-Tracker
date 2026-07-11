@@ -14,6 +14,10 @@ ON scans(project_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_scan_runs_scan_status
 ON scan_runs(scan_id, status);
 
+CREATE INDEX IF NOT EXISTS idx_scan_runs_pending_created_at
+ON scan_runs(created_at)
+WHERE status = 'pending';
+
 
 -- +goose Down
 DROP INDEX IF EXISTS idx_scan_runs_scan_status;
@@ -21,3 +25,4 @@ DROP INDEX IF EXISTS idx_scans_project_id_created_at;
 DROP INDEX IF EXISTS idx_prompts_project_active;
 DROP INDEX IF EXISTS idx_provider_keys_user_engine;
 DROP INDEX IF EXISTS idx_projects_user_id_created_at;
+DROP INDEX IF EXISTS idx_scan_runs_pending_created_at;
