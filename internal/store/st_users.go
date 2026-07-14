@@ -3,8 +3,10 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/Diaku49/AI-visibility-tracker/internal/db"
+	"github.com/Diaku49/AI-visibility-tracker/internal/pkg"
 	"github.com/google/uuid"
 )
 
@@ -13,15 +15,15 @@ var (
 	ErrEmailNotFound      = errors.New("email not found")
 )
 
-func (s *Store) SignUpUser(ctx context.Context, email, password, name string) (uuid.UUID, error) {
+func (s *Store) CreateUser(ctx context.Context, email, password, name string) (uuid.UUID, error) {
 
 	userID := uuid.New()
-	hashPassword, err := HashPassword(password)
+	hashPassword, err := pkg.HashPassword(password)
 	if err != nil {
 		return uuid.Nil, err
 	}
 
-	user, err := s.Query.CreateUser(ctx, db.CreateUserParams{
+	user, err := s.query.CreateUser(ctx, db.CreateUserParams{
 		ID:       userID,
 		Email:    email,
 		Password: &hashPassword,
@@ -37,7 +39,14 @@ func (s *Store) SignUpUser(ctx context.Context, email, password, name string) (u
 	return user.ID, nil
 }
 
-func (s *Store) LoginUser(ctx context.Context, email, password string) (uuid.UUID, string, error) {
+func (s *Store) GetUserByEmail(ctx context.Context, email string) (uuid.UUID, string, string, error) {
+	user, err := s.query.GetUserByEmail(ctx, db.GetUserByEmailParams{Email: email})
+	if err != nil {
+		if IsNotFound(err) {
+			return uuid.Nil, "", "", fmt.Errorf("user with this email not found")
+		}
+		return uuid.Nil, "", "", err
+	}
 
-	return uuid.Nil, "", nil
+	return user.ID, user.TierName, *user.Password, nil
 }

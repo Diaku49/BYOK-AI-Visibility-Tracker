@@ -22,7 +22,7 @@ func NewServer(store store.Store, config *config.Config) *Server {
 
 func (s *Server) Route() http.Handler {
 	mux := http.NewServeMux()
-	h := handlers.NewServerHandler(s.store)
+	h := handlers.NewServerHandler(s.store, s.cfg)
 	authMiddleware := Authenticate(s.cfg.JWTSecret)
 
 	// users

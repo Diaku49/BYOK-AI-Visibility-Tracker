@@ -2,12 +2,12 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 
 	"github.com/Diaku49/AI-visibility-tracker/internal/db"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"golang.org/x/crypto/bcrypt"
 )
 
 var (
@@ -15,8 +15,8 @@ var (
 )
 
 type Store struct {
-	Pool  *pgxpool.Pool
-	Query *db.Queries
+	pool  *pgxpool.Pool
+	query *db.Queries
 }
 
 func Connect(ctx context.Context, dbURL string) (*Store, error) {
@@ -31,8 +31,8 @@ func Connect(ctx context.Context, dbURL string) (*Store, error) {
 	}
 
 	return &Store{
-		Pool:  pool,
-		Query: db.New(pool),
+		pool:  pool,
+		query: db.New(pool),
 	}, nil
 }
 
@@ -44,13 +44,6 @@ func IsUniqueViolation(err error) bool {
 	return false
 }
 
-func HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-
-	return string(bytes), err
-}
-
-func CheckPasswordHash(password, hash string) bool {
-	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
-	return err == nil
+func IsNotFound(err error) bool {
+	return errors.Is(err, sql.ErrNoRows)
 }
