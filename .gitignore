@@ -27,6 +27,9 @@ go.work.sum
 # env file
 .env
 
+# Local Codex working notes
+.codex-notes.md
+
 # Editor/IDE
 # .idea/
 # .vscode/

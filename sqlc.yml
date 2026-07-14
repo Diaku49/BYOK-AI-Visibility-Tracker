@@ -15,13 +15,13 @@ sql:
         query_parameter_limit: 0
         omit_unused_structs: true
         overrides:
-          - db_type: "pg_catalog.uuid"
+          - db_type: "uuid"
             go_type:
               import: "github.com/google/uuid"
               package: "uuid"
               type: "UUID"
 
-          - db_type: "pg_catalog.uuid"
+          - db_type: "uuid"
             nullable: true
             go_type:
               import: "github.com/google/uuid"

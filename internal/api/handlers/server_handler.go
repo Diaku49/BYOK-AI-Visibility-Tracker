@@ -6,8 +6,8 @@ import (
 	"log/slog"
 	"net/http"
 
-	"github.com/Diaku49/AI-visibility-tracker/internals/logger"
-	"github.com/Diaku49/AI-visibility-tracker/internals/store"
+	"github.com/Diaku49/AI-visibility-tracker/internal/logger"
+	"github.com/Diaku49/AI-visibility-tracker/internal/store"
 	"github.com/google/uuid"
 )
 
