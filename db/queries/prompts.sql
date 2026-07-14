@@ -15,6 +15,25 @@ WHERE p.id = sqlc.arg(project_id)
   AND p.user_id = sqlc.arg(user_id)
 RETURNING *;
 
+-- name: CreatePromptsForUser :execrows
+INSERT INTO prompts (
+    id,
+    project_id,
+    text,
+    active
+)
+SELECT
+    unnest(sqlc.arg(ids)::uuid[]),
+    sqlc.arg(project_id),
+    unnest(sqlc.arg(texts)::text[]),
+    unnest(sqlc.arg(actives)::boolean[])
+WHERE EXISTS (
+    SELECT 1
+    FROM projects p
+    WHERE p.id = sqlc.arg(project_id)
+      AND p.user_id = sqlc.arg(user_id)
+);
+
 -- name: GetPromptByIDForUser :one
 SELECT pr.*
 FROM prompts pr

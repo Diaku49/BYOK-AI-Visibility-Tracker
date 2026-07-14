@@ -2,17 +2,15 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 
 	"github.com/Diaku49/AI-visibility-tracker/internal/db"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-var (
-	UniqueViolationErrorCode = "23505"
-)
+const UniqueViolationErrorCode = "23505"
 
 type Store struct {
 	pool  *pgxpool.Pool
@@ -45,5 +43,5 @@ func IsUniqueViolation(err error) bool {
 }
 
 func IsNotFound(err error) bool {
-	return errors.Is(err, sql.ErrNoRows)
+	return errors.Is(err, pgx.ErrNoRows)
 }

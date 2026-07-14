@@ -57,6 +57,48 @@ func (q *Queries) CreatePromptForUser(ctx context.Context, arg CreatePromptForUs
 	return i, err
 }
 
+const createPromptsForUser = `-- name: CreatePromptsForUser :execrows
+INSERT INTO prompts (
+    id,
+    project_id,
+    text,
+    active
+)
+SELECT
+    unnest($1::uuid[]),
+    $2,
+    unnest($3::text[]),
+    unnest($4::boolean[])
+WHERE EXISTS (
+    SELECT 1
+    FROM projects p
+    WHERE p.id = $2
+      AND p.user_id = $5
+)
+`
+
+type CreatePromptsForUserParams struct {
+	Ids       []uuid.UUID `json:"ids"`
+	ProjectID uuid.UUID   `json:"project_id"`
+	Texts     []string    `json:"texts"`
+	Actives   []bool      `json:"actives"`
+	UserID    uuid.UUID   `json:"user_id"`
+}
+
+func (q *Queries) CreatePromptsForUser(ctx context.Context, arg CreatePromptsForUserParams) (int64, error) {
+	result, err := q.db.Exec(ctx, createPromptsForUser,
+		arg.Ids,
+		arg.ProjectID,
+		arg.Texts,
+		arg.Actives,
+		arg.UserID,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getPromptByIDForUser = `-- name: GetPromptByIDForUser :one
 SELECT pr.id, pr.project_id, pr.text, pr.active, pr.created_at, pr.updated_at
 FROM prompts pr
