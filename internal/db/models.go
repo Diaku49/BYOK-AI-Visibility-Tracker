@@ -9,6 +9,48 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type Project struct {
+	ID        uuid.UUID          `json:"id"`
+	UserID    uuid.UUID          `json:"user_id"`
+	BrandName string             `json:"brand_name"`
+	Domain    string             `json:"domain"`
+	Language  string             `json:"language"`
+	Region    string             `json:"region"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ProjectEngine struct {
+	ProjectID     uuid.UUID          `json:"project_id"`
+	EngineID      string             `json:"engine_id"`
+	ProviderKeyID uuid.UUID          `json:"provider_key_id"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+}
+
+type Prompt struct {
+	ID        uuid.UUID          `json:"id"`
+	ProjectID uuid.UUID          `json:"project_id"`
+	Text      string             `json:"text"`
+	Active    bool               `json:"active"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type ProviderKey struct {
+	ID              uuid.UUID          `json:"id"`
+	UserID          uuid.UUID          `json:"user_id"`
+	EngineID        string             `json:"engine_id"`
+	Name            string             `json:"name"`
+	EncryptedKey    []byte             `json:"encrypted_key"`
+	KeyNonce        []byte             `json:"key_nonce"`
+	Active          bool               `json:"active"`
+	MonthlyRunLimit *int32             `json:"monthly_run_limit"`
+	MonthlyRunsUsed int32              `json:"monthly_runs_used"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
 type User struct {
 	ID        uuid.UUID          `json:"id"`
 	Email     string             `json:"email"`
