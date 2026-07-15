@@ -111,3 +111,14 @@ func (s *Store) UpdateProviderKeyMetadataForUser(
 
 	return providerKey, nil
 }
+
+func (s *Store) DeleteProviderKeyForUser(
+	ctx context.Context,
+	providerKeyID uuid.UUID,
+	userID uuid.UUID,
+) error {
+	return s.query.DeleteProviderKeyForUser(ctx, db.DeleteProviderKeyForUserParams{
+		ID:     providerKeyID,
+		UserID: userID,
+	})
+}

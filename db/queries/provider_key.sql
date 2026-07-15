@@ -48,3 +48,8 @@ SET
 WHERE id = $1
   AND user_id = $2
 RETURNING *;
+
+-- name: DeleteProviderKeyForUser :exec
+DELETE FROM provider_keys
+WHERE id = $1
+  AND user_id = $2;

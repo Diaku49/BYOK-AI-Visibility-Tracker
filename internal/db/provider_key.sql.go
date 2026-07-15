@@ -67,6 +67,22 @@ func (q *Queries) CreateProviderKey(ctx context.Context, arg CreateProviderKeyPa
 	return i, err
 }
 
+const deleteProviderKeyForUser = `-- name: DeleteProviderKeyForUser :exec
+DELETE FROM provider_keys
+WHERE id = $1
+  AND user_id = $2
+`
+
+type DeleteProviderKeyForUserParams struct {
+	ID     uuid.UUID `json:"id"`
+	UserID uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) DeleteProviderKeyForUser(ctx context.Context, arg DeleteProviderKeyForUserParams) error {
+	_, err := q.db.Exec(ctx, deleteProviderKeyForUser, arg.ID, arg.UserID)
+	return err
+}
+
 const getProviderKeyByID = `-- name: GetProviderKeyByID :one
 SELECT id, user_id, engine_id, name, encrypted_key, key_nonce, active, monthly_run_limit, monthly_runs_used, created_at, updated_at
 FROM provider_keys

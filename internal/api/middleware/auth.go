@@ -1,11 +1,13 @@
-package api
+package middleware
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
 	"github.com/Diaku49/AI-visibility-tracker/internal/pkg"
+	"github.com/google/uuid"
 )
 
 type contextKey string
@@ -42,4 +44,18 @@ func Authenticate(secret string) func(http.Handler) http.Handler {
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
+}
+
+func GetUserIDFromContext(ctx context.Context) (uuid.UUID, error) {
+	val := ctx.Value(userIDKey)
+	if val == nil {
+		return uuid.Nil, errors.New("user ID not found in context")
+	}
+
+	userID, ok := val.(uuid.UUID)
+	if !ok {
+		return uuid.Nil, errors.New("user ID in context has wrong type")
+	}
+
+	return userID, nil
 }

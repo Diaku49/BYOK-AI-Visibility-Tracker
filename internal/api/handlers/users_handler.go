@@ -1,17 +1,15 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
 
-	"github.com/Diaku49/AI-visibility-tracker/internal/model"
+	"github.com/Diaku49/AI-visibility-tracker/internal/dto"
 	"github.com/Diaku49/AI-visibility-tracker/internal/pkg"
 )
 
 func (h *ServerHandler) SignUpUser(w http.ResponseWriter, r *http.Request) {
 	l := h.GetLogger(r)
-	ctx := context.Background()
-	var req model.SignUpUser
+	var req dto.SignUpUser
 
 	if err := decodeAndValidateJSON(r, &req, h.v); err != nil {
 		HTTPError(w, http.StatusBadRequest, err.Error(), nil)
@@ -19,7 +17,7 @@ func (h *ServerHandler) SignUpUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := h.st.CreateUser(ctx, req.Email, req.Email, req.Name)
+	userID, err := h.st.CreateUser(r.Context(), req.Email, req.Email, req.Name)
 	if err != nil {
 		HTTPError(w, http.StatusInternalServerError, err.Error(), nil)
 		l.Error(err.Error())
@@ -32,8 +30,7 @@ func (h *ServerHandler) SignUpUser(w http.ResponseWriter, r *http.Request) {
 
 func (h *ServerHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
 	l := h.GetLogger(r)
-	ctx := context.Background()
-	var req model.LoginUser
+	var req dto.LoginUser
 
 	if err := decodeAndValidateJSON(r, &req, h.v); err != nil {
 		HTTPError(w, http.StatusBadRequest, err.Error(), nil)
@@ -41,7 +38,7 @@ func (h *ServerHandler) LoginUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, tier, pass, err := h.st.GetUserByEmail(ctx, req.Email)
+	userID, tier, pass, err := h.st.GetUserByEmail(r.Context(), req.Email)
 	if err != nil {
 		HTTPError(w, http.StatusInternalServerError, err.Error(), nil)
 		l.Error(err.Error())
