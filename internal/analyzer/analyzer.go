@@ -2,6 +2,7 @@ package analyzer
 
 import (
 	"context"
+	"encoding/json"
 
 	"github.com/google/uuid"
 )
@@ -10,35 +11,34 @@ type Analyzer interface {
 	AnalyzeScan(ctx context.Context, apiKey string, input ScanAnalysisInput) (*ScanAnalysisResult, error)
 }
 
-// Input
 type ScanAnalysisInput struct {
-	BrandName   string
-	BrandDomain string
+	ScanID      uuid.UUID `json:"scan_id"`
+	BrandName   string    `json:"brand_name"`
+	BrandDomain string    `json:"brand_domain"`
 
-	Competitors []CompetitorForAnalysis
-	Runs        []RunForAnalysis
+	Competitors []CompetitorForAnalysis `json:"competitors"`
+	Runs        []RunForAnalysis        `json:"runs"`
 }
 
 type CompetitorForAnalysis struct {
-	Name   string
-	Domain string
+	Name   string `json:"name"`
+	Domain string `json:"domain"`
 }
 
 type RunForAnalysis struct {
-	ScanRunID  uuid.UUID
-	EngineID   string
-	Prompt     string
-	AnswerText string
-	Citations  []Citation
+	ScanRunID  uuid.UUID  `json:"scan_run_id"`
+	EngineID   string     `json:"engine_id"`
+	PromptText string     `json:"prompt_text"`
+	AnswerText string     `json:"answer_text"`
+	Citations  []Citation `json:"citations"`
 }
 
 type Citation struct {
-	URL   string
-	Title string
-	Text  string
+	URL   string `json:"url"`
+	Title string `json:"title"`
+	Text  string `json:"text"`
 }
 
-// Response
 type ScanAnalysisResult struct {
 	Runs    []RunAnalysisResult `json:"runs"`
 	Summary ScanSummary         `json:"summary"`
@@ -75,4 +75,16 @@ type CompetitorSummary struct {
 type DomainSummary struct {
 	Domain string `json:"domain"`
 	Count  int    `json:"count"`
+}
+
+type ScanAnalysisRequest = ScanAnalysisInput
+type ScanAnalysisResponse = ScanAnalysisResult
+
+func BuildAnalyzerPrompt(input ScanAnalysisInput) (string, error) {
+	b, err := json.MarshalIndent(input, "", "  ")
+	if err != nil {
+		return "", err
+	}
+
+	return "Analyze this scan input and return the structured JSON result:\n\n" + string(b), nil
 }

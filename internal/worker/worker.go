@@ -8,7 +8,11 @@ import (
 type ScanRunJob struct {
 	ScanRunID     uuid.UUID
 	ProviderKeyID uuid.UUID
-	EngineID      string
-	APIKey        string
-	Request       provider.RunRequest
+
+	BrandName   string
+	BrandDomain string
+
+	EngineID string
+	APIKey   string
+	Request  provider.RunRequest
 }

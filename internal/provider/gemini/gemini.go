@@ -2,9 +2,12 @@ package gemini
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/Diaku49/AI-visibility-tracker/internal/analyzer"
 	p "github.com/Diaku49/AI-visibility-tracker/internal/provider"
 	"google.golang.org/genai"
 )
@@ -21,7 +24,7 @@ func NewGeminiProvider() *GeminiProvider {
 
 	return &GeminiProvider{
 		httpClient: httpcli,
-		model:      "gemini-2.5-flash",
+		model:      "gemini-flash-latest",
 	}
 }
 
@@ -37,7 +40,39 @@ func (gp *GeminiProvider) newClient(ctx context.Context, apiKey string) (*genai.
 	return cli, nil
 }
 
-func (gp *GeminiProvider) Run(ctx context.Context, apiKey string, req p.RunRequest) (*p.RunResponse, error) {
+func (gp *GeminiProvider) generate(ctx context.Context, cli *genai.Client, model string, req p.RunRequest) (*genai.GenerateContentResponse, error) {
+	var temp float32 = 0.6
+	config := &genai.GenerateContentConfig{
+		Temperature:     &temp,
+		MaxOutputTokens: 2048,
+		SystemInstruction: genai.NewContentFromText(
+			p.SysUserInstruction,
+			genai.RoleUser,
+		),
+	}
+
+	if req.UseWebSearch {
+		config.Tools = []*genai.Tool{
+			{
+				GoogleSearch: &genai.GoogleSearch{},
+			},
+		}
+	}
+
+	result, err := cli.Models.GenerateContent(
+		ctx,
+		model,
+		genai.Text(req.PromptText),
+		config,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	return result, nil
+}
+
+func (gp *GeminiProvider) Run(ctx context.Context, apiKey string, req p.RunInput) (*p.RunOutput, error) {
 	client, err := gp.newClient(ctx, apiKey)
 	if err != nil {
 		return nil, err
@@ -48,35 +83,72 @@ func (gp *GeminiProvider) Run(ctx context.Context, apiKey string, req p.RunReque
 		model = gp.model
 	}
 
-	result, err := gp.generate(ctx, client, model, req.Prompt)
+	result, err := gp.generate(ctx, client, model, req)
 	if err != nil {
 		return nil, err
 	}
 
-	return &p.RunResponse{
+	output := &p.RunOutput{
 		EngineID:   p.EngineGemini,
 		Model:      model,
 		AnswerText: result.Text(),
 		Raw:        result,
-	}, nil
-}
-
-func (gp *GeminiProvider) generate(ctx context.Context, cli *genai.Client, model, text string) (*genai.GenerateContentResponse, error) {
-	var temp float32 = 0.6
-	config := &genai.GenerateContentConfig{
-		Temperature:     &temp,
-		MaxOutputTokens: 1024,
 	}
 
-	result, err := cli.Models.GenerateContent(
+	if result.UsageMetadata != nil {
+		output.Usage = p.TokenUsage{
+			InputTokens:  int(result.UsageMetadata.PromptTokenCount),
+			OutputTokens: int(result.UsageMetadata.CandidatesTokenCount),
+		}
+	}
+
+	return output, nil
+}
+
+func (gp *GeminiProvider) AnalyzeScan(
+	ctx context.Context,
+	apiKey string,
+	input analyzer.ScanAnalysisInput,
+) (*analyzer.ScanAnalysisResult, error) {
+	client, err := gp.newClient(ctx, apiKey)
+	if err != nil {
+		return nil, err
+	}
+
+	prompt, err := analyzer.BuildAnalyzerPrompt(input)
+	if err != nil {
+		return nil, err
+	}
+
+	temp := float32(0.1)
+
+	config := &genai.GenerateContentConfig{
+		Temperature:      &temp,
+		MaxOutputTokens:  4096,
+		ResponseMIMEType: "application/json",
+		ResponseSchema:   analyzer.ScanAnalysisSchema(),
+		SystemInstruction: genai.NewContentFromText(
+			analyzer.AnalyzerSystemInstruction,
+			genai.RoleUser,
+		),
+	}
+
+	resp, err := client.Models.GenerateContent(
 		ctx,
-		model,
-		genai.Text(text),
+		gp.model,
+		genai.Text(prompt),
 		config,
 	)
 	if err != nil {
 		return nil, err
 	}
 
-	return result, nil
+	text := resp.Text()
+
+	var result analyzer.ScanAnalysisResult
+	if err := json.Unmarshal([]byte(text), &result); err != nil {
+		return nil, fmt.Errorf("decode analyzer json: %w; raw=%s", err, text)
+	}
+
+	return &result, nil
 }
