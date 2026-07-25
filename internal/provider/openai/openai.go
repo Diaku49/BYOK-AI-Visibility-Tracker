@@ -43,10 +43,6 @@ func NewOpenAIProvider() *OpenAIProvider {
 	}
 }
 
-func NewOpenAiProvider() *OpenAIProvider {
-	return NewOpenAIProvider()
-}
-
 func (oap *OpenAIProvider) NewClient(baseURL *string, apiKey string) (*openai.Client, error) {
 	config := openai.DefaultConfig(apiKey)
 	config.HTTPClient = oap.httpClient

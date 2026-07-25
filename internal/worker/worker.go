@@ -3,6 +3,7 @@ package worker
 import (
 	"github.com/Diaku49/AI-visibility-tracker/internal/provider"
 	"github.com/Diaku49/AI-visibility-tracker/internal/provider/gemini"
+	"github.com/Diaku49/AI-visibility-tracker/internal/provider/openai"
 	"github.com/google/uuid"
 )
 
@@ -34,14 +35,14 @@ type Worker struct {
 }
 
 func NewWorker() *Worker {
+	pr := make(map[string]provider.Provider)
+	pr[GeiminiP] = gemini.NewGeminiProvider()
+	pr[OpenAIP] = openai.NewOpenAIProvider()
+
 	return &Worker{
-		providerRegistery: make(map[string]provider.Provider),
+		providerRegistery: pr,
 		scans:             make(map[uuid.UUID]*ScanJob),
 	}
-}
-
-func (w *Worker) InitRegistery() {
-	w.providerRegistery[GeiminiP] = gemini.NewGeminiProvider()
 }
 
 func (w *Worker) Start() {}
