@@ -2,14 +2,17 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/Diaku49/AI-visibility-tracker/internal/analyzer"
 	"github.com/Diaku49/AI-visibility-tracker/internal/provider"
 	"github.com/Diaku49/AI-visibility-tracker/internal/provider/gemini"
+	"github.com/google/uuid"
 )
 
 func main() {
@@ -38,6 +41,8 @@ func main() {
 	ctx := context.Background()
 
 	llm := gemini.NewGeminiProvider()
+	scanID := uuid.New()
+	runsForAnalysis := make([]analyzer.RunForAnalysis, 0, len(prompts))
 
 	for i, prompt := range prompts {
 		fmt.Printf("\n--- Run %d ---\n", i+1)
@@ -55,10 +60,56 @@ func main() {
 		fmt.Printf("Output tokens: %d\n\n", output.Usage.OutputTokens)
 		fmt.Println(output.AnswerText)
 
+		runsForAnalysis = append(runsForAnalysis, analyzer.RunForAnalysis{
+			ScanRunID:  uuid.New(),
+			EngineID:   string(output.EngineID),
+			PromptText: prompt,
+			AnswerText: output.AnswerText,
+			Citations:  toAnalyzerCitations(output.Citations),
+		})
+
 		if i < len(prompts)-1 {
 			time.Sleep(betweenRunWait)
 		}
 	}
+
+	if len(runsForAnalysis) == 0 {
+		log.Println("no successful runs to analyze")
+		return
+	}
+
+	fmt.Printf("\n--- Analysis ---\n")
+
+	analysisInput := analyzer.ScanAnalysisInput{
+		ScanID:      scanID,
+		BrandName:   envOrDefault("TEST_BRAND_NAME", "Linear"),
+		BrandDomain: envOrDefault("TEST_BRAND_DOMAIN", "linear.app"),
+		Competitors: []analyzer.CompetitorForAnalysis{
+			{Name: envOrDefault("TEST_COMPETITOR_1_NAME", "Jira"), Domain: envOrDefault("TEST_COMPETITOR_1_DOMAIN", "atlassian.com")},
+			{Name: envOrDefault("TEST_COMPETITOR_2_NAME", "Asana"), Domain: envOrDefault("TEST_COMPETITOR_2_DOMAIN", "asana.com")},
+			{Name: envOrDefault("TEST_COMPETITOR_3_NAME", "ClickUp"), Domain: envOrDefault("TEST_COMPETITOR_3_DOMAIN", "clickup.com")},
+		},
+		Runs: runsForAnalysis,
+	}
+
+	analysisCtx, cancel := context.WithTimeout(ctx, attemptTimeout)
+	analysis, err := llm.AnalyzeScan(analysisCtx, apiKey, analysisInput)
+	cancel()
+	if err != nil {
+		log.Fatalf("analysis failed: %v", err)
+	}
+
+	analysisJSON, err := json.MarshalIndent(analysis, "", "  ")
+	if err != nil {
+		log.Fatalf("encode analysis json: %v", err)
+	}
+
+	const analysisResultPath = "scripts/analysis_result.json"
+	if err := os.WriteFile(analysisResultPath, append(analysisJSON, '\n'), 0644); err != nil {
+		log.Fatalf("write analysis result: %v", err)
+	}
+
+	fmt.Printf("Analysis result written to %s\n", analysisResultPath)
 }
 
 func runWithRetry(
@@ -75,7 +126,7 @@ func runWithRetry(
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		attemptCtx, cancel := context.WithTimeout(ctx, attemptTimeout)
-		output, err := llm.Run(attemptCtx, apiKey, provider.RunInput{
+		output, err := llm.Run(attemptCtx, apiKey, nil, provider.RunInput{
 			PromptText:   prompt,
 			UseWebSearch: false,
 		})
@@ -115,4 +166,26 @@ func isRetryable(err error) bool {
 		strings.Contains(errText, "RESOURCE_EXHAUSTED") ||
 		strings.Contains(errText, "UNAVAILABLE") ||
 		strings.Contains(errText, "DEADLINE_EXCEEDED")
+}
+
+func toAnalyzerCitations(citations []provider.Citation) []analyzer.Citation {
+	out := make([]analyzer.Citation, 0, len(citations))
+	for _, citation := range citations {
+		out = append(out, analyzer.Citation{
+			URL:   citation.URL,
+			Title: citation.Title,
+			Text:  citation.Text,
+		})
+	}
+
+	return out
+}
+
+func envOrDefault(key, fallback string) string {
+	value := strings.TrimSpace(os.Getenv(key))
+	if value == "" {
+		return fallback
+	}
+
+	return value
 }

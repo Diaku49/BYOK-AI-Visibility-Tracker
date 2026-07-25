@@ -9,12 +9,11 @@ type EngineID string
 const (
 	EngineGemini EngineID = "gemini"
 	EngineOpenAI EngineID = "openai"
-	EngineGPT    EngineID = EngineOpenAI
 )
 
 type Provider interface {
 	ID() EngineID
-	Run(ctx context.Context, apiKey string, input RunInput) (*RunOutput, error)
+	Run(ctx context.Context, apiKey string, baseURL *string, input RunInput) (*RunOutput, error)
 }
 
 type RunInput struct {

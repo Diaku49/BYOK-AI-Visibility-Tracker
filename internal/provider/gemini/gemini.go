@@ -40,11 +40,13 @@ func (gp *GeminiProvider) newClient(ctx context.Context, apiKey string) (*genai.
 	return cli, nil
 }
 
+func (gp *GeminiProvider) ID() p.EngineID { return p.EngineGemini }
+
 func (gp *GeminiProvider) generate(ctx context.Context, cli *genai.Client, model string, req p.RunRequest) (*genai.GenerateContentResponse, error) {
 	var temp float32 = 0.6
 	config := &genai.GenerateContentConfig{
 		Temperature:     &temp,
-		MaxOutputTokens: 2048,
+		MaxOutputTokens: 3000,
 		SystemInstruction: genai.NewContentFromText(
 			p.SysUserInstruction,
 			genai.RoleUser,
@@ -72,7 +74,7 @@ func (gp *GeminiProvider) generate(ctx context.Context, cli *genai.Client, model
 	return result, nil
 }
 
-func (gp *GeminiProvider) Run(ctx context.Context, apiKey string, req p.RunInput) (*p.RunOutput, error) {
+func (gp *GeminiProvider) Run(ctx context.Context, apiKey string, _ *string, req p.RunInput) (*p.RunOutput, error) {
 	client, err := gp.newClient(ctx, apiKey)
 	if err != nil {
 		return nil, err
