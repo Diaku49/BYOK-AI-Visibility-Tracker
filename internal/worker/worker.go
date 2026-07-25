@@ -121,25 +121,32 @@ func (wm *WorkerManager) StartWorker(c chan *ScanRunJob) {
 }
 
 // Retry interval needs to be implemented
-func (wm *WorkerManager) Run(j *ScanRunJob, retryAttempt int, retryInterval time.Duration) ScanRunJobResponse {
+func (wm *WorkerManager) Run(j *ScanRunJob, retryAttempt int, retryInterval time.Duration) *ScanRunJobResponse {
 	var scanResponse ScanRunJobResponse
 	for ; retryAttempt > 0; retryAttempt-- {
-		attemptCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
 		p := wm.providerRegistery[j.EngineID]
-		result, err := p.Run(attemptCtx, j.APIKey, nil, j.Request)
+		result, err := p.Run(ctx, j.APIKey, nil, j.Request)
+
 		if err != nil {
 			wm.l.Error(err.Error(), "ScanID", j.ScanID, "RunID", j.ScanRunID, "Engine", j.EngineID)
-			scanResponse := ScanRunJobResponse{
+			scanResponse = ScanRunJobResponse{
 				scanRunID: j.ScanRunID,
 				result:    *result,
 				error:     err.Error(),
 			}
-			wm.scans[j.ScanID].ScanRunsResult = append(wm.scans[j.ScanID].ScanRunsResult, scanResponse)
-			cancel()
-			continue
+
+			select {
+			case <-ctx.Done():
+				cancel()
+				wm.scans[j.ScanID].ScanRunsResult = append(wm.scans[j.ScanID].ScanRunsResult, scanResponse)
+				return &scanResponse
+			case <-time.After(retryInterval):
+				cancel()
+				continue
+			}
 		}
-		cancel()
 
 		// Update the ScanJob
 		scanResponse = ScanRunJobResponse{
@@ -147,10 +154,11 @@ func (wm *WorkerManager) Run(j *ScanRunJob, retryAttempt int, retryInterval time
 			result:    *result,
 			error:     "",
 		}
-		wm.scans[j.ScanID].ScanRunsResult = append(wm.scans[j.ScanID].ScanRunsResult, scanResponse)
+		cancel()
 	}
+	wm.scans[j.ScanID].ScanRunsResult = append(wm.scans[j.ScanID].ScanRunsResult, scanResponse)
 
-	return scanResponse
+	return &scanResponse
 }
 
 // take available works from db mark them then flow into scan channel
@@ -158,6 +166,6 @@ func (wm *WorkerManager) GetWork() error {
 	return nil
 }
 
-func (wm *WorkerManager) StartAnalyze(c chan *a.ScanAnalysisInput) {}
-
 func (wm *WorkerManager) PutIntoAnalysis(scanJobID uuid.UUID, scanJob *ScanJob) {}
+
+func (wm *WorkerManager) StartAnalyze(c chan *a.ScanAnalysisInput) {}
