@@ -121,12 +121,12 @@ func runWithRetry(
 	maxAttempts int,
 	attemptTimeout time.Duration,
 	retryWait time.Duration,
-) (*provider.RunOutput, error) {
+) (*provider.RunResponse, error) {
 	var lastErr error
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		attemptCtx, cancel := context.WithTimeout(ctx, attemptTimeout)
-		output, err := llm.Run(attemptCtx, apiKey, nil, provider.RunInput{
+		output, err := llm.Run(attemptCtx, apiKey, nil, provider.RunRequest{
 			PromptText:   prompt,
 			UseWebSearch: false,
 		})

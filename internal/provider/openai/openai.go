@@ -89,8 +89,8 @@ func (oap *OpenAIProvider) Run(
 	ctx context.Context,
 	apiKey string,
 	baseURL *string,
-	req p.RunInput,
-) (*p.RunOutput, error) {
+	req p.RunRequest,
+) (*p.RunResponse, error) {
 	client, err := oap.NewClient(baseURL, apiKey)
 	if err != nil {
 		return nil, err
@@ -118,7 +118,7 @@ func (oap *OpenAIProvider) Run(
 		return nil, fmt.Errorf("openai refused the request: %s", message.Refusal)
 	}
 
-	return &p.RunOutput{
+	return &p.RunResponse{
 		EngineID:   p.EngineOpenAI,
 		Model:      model,
 		AnswerText: message.Content,

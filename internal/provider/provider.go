@@ -13,10 +13,10 @@ const (
 
 type Provider interface {
 	ID() EngineID
-	Run(ctx context.Context, apiKey string, baseURL *string, input RunInput) (*RunOutput, error)
+	Run(ctx context.Context, apiKey string, baseURL *string, input RunRequest) (*RunResponse, error)
 }
 
-type RunInput struct {
+type RunRequest struct {
 	PromptText   string `json:"prompt_text"`
 	Model        string `json:"model"`
 	UseWebSearch bool   `json:"use_web_search"`
@@ -24,7 +24,7 @@ type RunInput struct {
 	Region       string `json:"region"`
 }
 
-type RunOutput struct {
+type RunResponse struct {
 	EngineID   EngineID
 	Model      string
 	AnswerText string
@@ -43,8 +43,5 @@ type Citation struct {
 	Title string `json:"title"`
 	Text  string `json:"text"`
 }
-
-type RunRequest = RunInput
-type RunResponse = RunOutput
 
 var SysUserInstruction string = "Answer in plain text only. Do not use markdown formatting, tables, bullet points, headings, or code blocks."

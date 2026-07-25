@@ -74,7 +74,7 @@ func (gp *GeminiProvider) generate(ctx context.Context, cli *genai.Client, model
 	return result, nil
 }
 
-func (gp *GeminiProvider) Run(ctx context.Context, apiKey string, _ *string, req p.RunInput) (*p.RunOutput, error) {
+func (gp *GeminiProvider) Run(ctx context.Context, apiKey string, _ *string, req p.RunRequest) (*p.RunResponse, error) {
 	client, err := gp.newClient(ctx, apiKey)
 	if err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func (gp *GeminiProvider) Run(ctx context.Context, apiKey string, _ *string, req
 		return nil, err
 	}
 
-	output := &p.RunOutput{
+	output := &p.RunResponse{
 		EngineID:   p.EngineGemini,
 		Model:      model,
 		AnswerText: result.Text(),
