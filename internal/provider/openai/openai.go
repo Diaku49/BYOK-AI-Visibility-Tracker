@@ -60,14 +60,14 @@ func (oap *OpenAIProvider) generate(
 	ctx context.Context,
 	cli *openai.Client,
 	model string,
-	req p.RunRequest,
+	req p.PromptRunRequest,
 ) (*openai.ChatCompletionResponse, error) {
 	request := openai.ChatCompletionRequest{
 		Model: model,
 		Messages: []openai.ChatCompletionMessage{
 			{
 				Role:    openai.ChatMessageRoleSystem,
-				Content: p.SysUserInstruction,
+				Content: p.PlainTextSystemInstruction,
 			},
 			{
 				Role:    openai.ChatMessageRoleUser,
@@ -89,8 +89,8 @@ func (oap *OpenAIProvider) Run(
 	ctx context.Context,
 	apiKey string,
 	baseURL *string,
-	req p.RunRequest,
-) (*p.RunResponse, error) {
+	req p.PromptRunRequest,
+) (*p.PromptRunResult, error) {
 	client, err := oap.NewClient(baseURL, apiKey)
 	if err != nil {
 		return nil, err
@@ -118,7 +118,7 @@ func (oap *OpenAIProvider) Run(
 		return nil, fmt.Errorf("openai refused the request: %s", message.Refusal)
 	}
 
-	return &p.RunResponse{
+	return &p.PromptRunResult{
 		EngineID:   p.EngineOpenAI,
 		Model:      model,
 		AnswerText: message.Content,

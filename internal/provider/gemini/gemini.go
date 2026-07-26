@@ -42,13 +42,13 @@ func (gp *GeminiProvider) newClient(ctx context.Context, apiKey string) (*genai.
 
 func (gp *GeminiProvider) ID() p.EngineID { return p.EngineGemini }
 
-func (gp *GeminiProvider) generate(ctx context.Context, cli *genai.Client, model string, req p.RunRequest) (*genai.GenerateContentResponse, error) {
+func (gp *GeminiProvider) generate(ctx context.Context, cli *genai.Client, model string, req p.PromptRunRequest) (*genai.GenerateContentResponse, error) {
 	var temp float32 = 0.6
 	config := &genai.GenerateContentConfig{
 		Temperature:     &temp,
 		MaxOutputTokens: 3000,
 		SystemInstruction: genai.NewContentFromText(
-			p.SysUserInstruction,
+			p.PlainTextSystemInstruction,
 			genai.RoleUser,
 		),
 	}
@@ -74,7 +74,7 @@ func (gp *GeminiProvider) generate(ctx context.Context, cli *genai.Client, model
 	return result, nil
 }
 
-func (gp *GeminiProvider) Run(ctx context.Context, apiKey string, _ *string, req p.RunRequest) (*p.RunResponse, error) {
+func (gp *GeminiProvider) Run(ctx context.Context, apiKey string, _ *string, req p.PromptRunRequest) (*p.PromptRunResult, error) {
 	client, err := gp.newClient(ctx, apiKey)
 	if err != nil {
 		return nil, err
@@ -90,7 +90,7 @@ func (gp *GeminiProvider) Run(ctx context.Context, apiKey string, _ *string, req
 		return nil, err
 	}
 
-	output := &p.RunResponse{
+	output := &p.PromptRunResult{
 		EngineID:   p.EngineGemini,
 		Model:      model,
 		AnswerText: result.Text(),

@@ -60,6 +60,41 @@ type ProviderKey struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
+type Scan struct {
+	ID             uuid.UUID          `json:"id"`
+	ProjectID      uuid.UUID          `json:"project_id"`
+	Status         string             `json:"status"`
+	TriesPerPrompt int32              `json:"tries_per_prompt"`
+	TotalRuns      int32              `json:"total_runs"`
+	CompletedRuns  int32              `json:"completed_runs"`
+	FailedRuns     int32              `json:"failed_runs"`
+	Summary        []byte             `json:"summary"`
+	Error          *string            `json:"error"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	StartedAt      pgtype.Timestamptz `json:"started_at"`
+	FinishedAt     pgtype.Timestamptz `json:"finished_at"`
+}
+
+type ScanRun struct {
+	ID                   uuid.UUID          `json:"id"`
+	ScanID               uuid.UUID          `json:"scan_id"`
+	EngineID             string             `json:"engine_id"`
+	PromptID             uuid.UUID          `json:"prompt_id"`
+	ProviderKeyID        uuid.UUID          `json:"provider_key_id"`
+	TryNumber            int32              `json:"try_number"`
+	Status               string             `json:"status"`
+	AnswerText           *string            `json:"answer_text"`
+	RawResponse          []byte             `json:"raw_response"`
+	BrandMentioned       *bool              `json:"brand_mentioned"`
+	BrandDomainCited     *bool              `json:"brand_domain_cited"`
+	CompetitorsMentioned []byte             `json:"competitors_mentioned"`
+	CitedDomains         []byte             `json:"cited_domains"`
+	Error                *string            `json:"error"`
+	CreatedAt            pgtype.Timestamptz `json:"created_at"`
+	StartedAt            pgtype.Timestamptz `json:"started_at"`
+	FinishedAt           pgtype.Timestamptz `json:"finished_at"`
+}
+
 type User struct {
 	ID        uuid.UUID          `json:"id"`
 	Email     string             `json:"email"`

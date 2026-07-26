@@ -11,12 +11,12 @@ const (
 	EngineOpenAI EngineID = "openai"
 )
 
-type Provider interface {
+type Runner interface {
 	ID() EngineID
-	Run(ctx context.Context, apiKey string, baseURL *string, input RunRequest) (*RunResponse, error)
+	Run(ctx context.Context, apiKey string, baseURL *string, input PromptRunRequest) (*PromptRunResult, error)
 }
 
-type RunRequest struct {
+type PromptRunRequest struct {
 	PromptText   string `json:"prompt_text"`
 	Model        string `json:"model"`
 	UseWebSearch bool   `json:"use_web_search"`
@@ -24,7 +24,7 @@ type RunRequest struct {
 	Region       string `json:"region"`
 }
 
-type RunResponse struct {
+type PromptRunResult struct {
 	EngineID   EngineID
 	Model      string
 	AnswerText string
@@ -44,4 +44,4 @@ type Citation struct {
 	Text  string `json:"text"`
 }
 
-var SysUserInstruction string = "Answer in plain text only. Do not use markdown formatting, tables, bullet points, headings, or code blocks."
+var PlainTextSystemInstruction string = "Answer in plain text only. Do not use markdown formatting, tables, bullet points, headings, or code blocks."
