@@ -1,13 +1,23 @@
 package store
 
-import "github.com/google/uuid"
+import (
+	"context"
 
-func (st *Store) UpdateStateScanRunByID(scanRunID uuid.UUID, state string) error {
+	"github.com/Diaku49/AI-visibility-tracker/internal/db"
+	"github.com/google/uuid"
+)
 
-	return nil
+func (s *Store) UpdateStateScanRunByID(ctx context.Context, scanRunID uuid.UUID, state string) (db.ScanRun, error) {
+	return s.query.UpdateScanRunStateByID(ctx, db.UpdateScanRunStateByIDParams{
+		ID:     scanRunID,
+		Status: state,
+	})
 }
 
-func (st *Store) UpdateScanRunByID(scanRunID uuid.UUID, data any) error {
+func (s *Store) UpdateScanRunByID(ctx context.Context, arg db.UpdateScanRunParams) (db.ScanRun, error) {
+	return s.query.UpdateScanRun(ctx, arg)
+}
 
-	return nil
+func (s *Store) UpdateScanRunAnalysis(ctx context.Context, arg db.UpdateScanRunAnalysisParams) error {
+	return s.query.UpdateScanRunAnalysis(ctx, arg)
 }

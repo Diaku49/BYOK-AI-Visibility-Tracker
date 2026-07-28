@@ -47,3 +47,13 @@ SET
     finished_at = sqlc.narg(finished_at)
 WHERE id = sqlc.arg(id)
 RETURNING *;
+
+-- name: IncrementScanCompletedRuns :exec
+UPDATE scans
+SET completed_runs = completed_runs + 1
+WHERE id = sqlc.arg(id);
+
+-- name: IncrementScanFailedRuns :exec
+UPDATE scans
+SET failed_runs = failed_runs + 1
+WHERE id = sqlc.arg(id);

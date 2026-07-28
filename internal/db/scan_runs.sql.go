@@ -47,6 +47,99 @@ func (q *Queries) GetScanRunByID(ctx context.Context, arg GetScanRunByIDParams) 
 	return i, err
 }
 
+const getScansForAnalysis = `-- name: GetScansForAnalysis :many
+WITH ready_scans AS (
+    SELECT s.id
+    FROM scans s
+    WHERE s.status = 'running'
+      AND NOT EXISTS (
+          SELECT 1 FROM scan_runs sr
+          WHERE sr.scan_id = s.id
+            AND sr.status NOT IN ('completed', 'failed')
+      )
+    FOR UPDATE OF s SKIP LOCKED
+), claimed AS (
+    UPDATE scans s
+    SET status = 'analyzing'
+    FROM ready_scans rs
+    WHERE s.id = rs.id
+    RETURNING s.id, s.project_id
+)
+SELECT
+    c.id AS scan_id,
+    c.project_id,
+    p.brand_name,
+    p.domain AS brand_domain,
+    sr.id AS scan_run_id,
+    sr.engine_id,
+    sr.prompt_id,
+    sr.provider_key_id,
+    sr.status AS scan_run_status,
+    sr.answer_text,
+    sr.raw_response,
+    pr.text AS prompt_text,
+    pk.encrypted_key,
+    pk.key_nonce
+FROM claimed c
+JOIN projects p ON p.id = c.project_id
+JOIN scan_runs sr ON sr.scan_id = c.id
+JOIN prompts pr ON pr.id = sr.prompt_id
+JOIN provider_keys pk ON pk.id = sr.provider_key_id
+ORDER BY c.id, sr.created_at ASC
+`
+
+type GetScansForAnalysisRow struct {
+	ScanID        uuid.UUID `json:"scan_id"`
+	ProjectID     uuid.UUID `json:"project_id"`
+	BrandName     string    `json:"brand_name"`
+	BrandDomain   string    `json:"brand_domain"`
+	ScanRunID     uuid.UUID `json:"scan_run_id"`
+	EngineID      string    `json:"engine_id"`
+	PromptID      uuid.UUID `json:"prompt_id"`
+	ProviderKeyID uuid.UUID `json:"provider_key_id"`
+	ScanRunStatus string    `json:"scan_run_status"`
+	AnswerText    *string   `json:"answer_text"`
+	RawResponse   []byte    `json:"raw_response"`
+	PromptText    string    `json:"prompt_text"`
+	EncryptedKey  []byte    `json:"encrypted_key"`
+	KeyNonce      []byte    `json:"key_nonce"`
+}
+
+func (q *Queries) GetScansForAnalysis(ctx context.Context) ([]GetScansForAnalysisRow, error) {
+	rows, err := q.db.Query(ctx, getScansForAnalysis)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetScansForAnalysisRow
+	for rows.Next() {
+		var i GetScansForAnalysisRow
+		if err := rows.Scan(
+			&i.ScanID,
+			&i.ProjectID,
+			&i.BrandName,
+			&i.BrandDomain,
+			&i.ScanRunID,
+			&i.EngineID,
+			&i.PromptID,
+			&i.ProviderKeyID,
+			&i.ScanRunStatus,
+			&i.AnswerText,
+			&i.RawResponse,
+			&i.PromptText,
+			&i.EncryptedKey,
+			&i.KeyNonce,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getScansForWorkers = `-- name: GetScansForWorkers :many
 WITH claimed AS (
     SELECT sr.id
@@ -241,6 +334,35 @@ func (q *Queries) UpdateScanRun(ctx context.Context, arg UpdateScanRunParams) (S
 		&i.FinishedAt,
 	)
 	return i, err
+}
+
+const updateScanRunAnalysis = `-- name: UpdateScanRunAnalysis :exec
+UPDATE scan_runs
+SET
+    brand_mentioned = $1,
+    brand_domain_cited = $2,
+    competitors_mentioned = $3,
+    cited_domains = $4
+WHERE id = $5
+`
+
+type UpdateScanRunAnalysisParams struct {
+	BrandMentioned       *bool     `json:"brand_mentioned"`
+	BrandDomainCited     *bool     `json:"brand_domain_cited"`
+	CompetitorsMentioned []byte    `json:"competitors_mentioned"`
+	CitedDomains         []byte    `json:"cited_domains"`
+	ID                   uuid.UUID `json:"id"`
+}
+
+func (q *Queries) UpdateScanRunAnalysis(ctx context.Context, arg UpdateScanRunAnalysisParams) error {
+	_, err := q.db.Exec(ctx, updateScanRunAnalysis,
+		arg.BrandMentioned,
+		arg.BrandDomainCited,
+		arg.CompetitorsMentioned,
+		arg.CitedDomains,
+		arg.ID,
+	)
+	return err
 }
 
 const updateScanRunStateByID = `-- name: UpdateScanRunStateByID :one

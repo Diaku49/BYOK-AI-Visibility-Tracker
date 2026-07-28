@@ -52,6 +52,12 @@ func (s *Store) ListCompetitorsByProjectForUser(
 	})
 }
 
+func (s *Store) ListCompetitorsByProject(ctx context.Context, projectID uuid.UUID) ([]db.Competitor, error) {
+	return s.query.ListCompetitorsByProject(ctx, db.ListCompetitorsByProjectParams{
+		ProjectID: projectID,
+	})
+}
+
 func (s *Store) DeleteCompetitorForUser(ctx context.Context, competitorID, userID uuid.UUID) error {
 	rowsAffected, err := s.query.DeleteCompetitorForUser(ctx, db.DeleteCompetitorForUserParams{
 		ID:     competitorID,

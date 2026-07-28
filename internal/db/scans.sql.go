@@ -118,6 +118,36 @@ func (q *Queries) GetScanByID(ctx context.Context, arg GetScanByIDParams) (Scan,
 	return i, err
 }
 
+const incrementScanCompletedRuns = `-- name: IncrementScanCompletedRuns :exec
+UPDATE scans
+SET completed_runs = completed_runs + 1
+WHERE id = $1
+`
+
+type IncrementScanCompletedRunsParams struct {
+	ID uuid.UUID `json:"id"`
+}
+
+func (q *Queries) IncrementScanCompletedRuns(ctx context.Context, arg IncrementScanCompletedRunsParams) error {
+	_, err := q.db.Exec(ctx, incrementScanCompletedRuns, arg.ID)
+	return err
+}
+
+const incrementScanFailedRuns = `-- name: IncrementScanFailedRuns :exec
+UPDATE scans
+SET failed_runs = failed_runs + 1
+WHERE id = $1
+`
+
+type IncrementScanFailedRunsParams struct {
+	ID uuid.UUID `json:"id"`
+}
+
+func (q *Queries) IncrementScanFailedRuns(ctx context.Context, arg IncrementScanFailedRunsParams) error {
+	_, err := q.db.Exec(ctx, incrementScanFailedRuns, arg.ID)
+	return err
+}
+
 const updateScan = `-- name: UpdateScan :one
 UPDATE scans
 SET

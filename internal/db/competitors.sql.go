@@ -78,6 +78,44 @@ func (q *Queries) DeleteCompetitorForUser(ctx context.Context, arg DeleteCompeti
 	return result.RowsAffected(), nil
 }
 
+const listCompetitorsByProject = `-- name: ListCompetitorsByProject :many
+SELECT c.id, c.project_id, c.name, c.domain, c.created_at, c.updated_at
+FROM competitors c
+WHERE c.project_id = $1
+ORDER BY c.created_at DESC
+`
+
+type ListCompetitorsByProjectParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+}
+
+func (q *Queries) ListCompetitorsByProject(ctx context.Context, arg ListCompetitorsByProjectParams) ([]Competitor, error) {
+	rows, err := q.db.Query(ctx, listCompetitorsByProject, arg.ProjectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Competitor
+	for rows.Next() {
+		var i Competitor
+		if err := rows.Scan(
+			&i.ID,
+			&i.ProjectID,
+			&i.Name,
+			&i.Domain,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCompetitorsByProjectForUser = `-- name: ListCompetitorsByProjectForUser :many
 SELECT c.id, c.project_id, c.name, c.domain, c.created_at, c.updated_at
 FROM competitors c

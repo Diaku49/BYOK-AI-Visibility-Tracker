@@ -30,3 +30,9 @@ USING projects p
 WHERE c.id = sqlc.arg(id)
   AND c.project_id = p.id
   AND p.user_id = sqlc.arg(user_id);
+
+-- name: ListCompetitorsByProject :many
+SELECT c.*
+FROM competitors c
+WHERE c.project_id = sqlc.arg(project_id)
+ORDER BY c.created_at DESC;
