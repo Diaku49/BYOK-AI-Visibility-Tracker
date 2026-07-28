@@ -45,13 +45,6 @@ type ScanRunResult struct {
 	error     string
 }
 
-type ScanBatch struct {
-	BrandName      string
-	BrandDomain    string
-	ScanRunsResult []ScanRunResult
-	ScanRunLeft    int
-}
-
 type AnalysisTask struct {
 	Input    a.ScanAnalysisInput
 	EngineID string
