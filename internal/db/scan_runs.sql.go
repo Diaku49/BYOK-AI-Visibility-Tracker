@@ -142,19 +142,19 @@ func (q *Queries) GetScansForAnalysis(ctx context.Context) ([]GetScansForAnalysi
 
 const getScansForWorkers = `-- name: GetScansForWorkers :many
 WITH claimed AS (
-    SELECT sr.id
-    FROM scan_runs sr
-    WHERE sr.status = 'pending'
-       OR (sr.status = 'running' AND sr.started_at <= now() - interval '30 seconds')
-    ORDER BY sr.created_at ASC
-    FOR UPDATE SKIP LOCKED
+    SELECT s.id
+    FROM scans s
+    WHERE s.status = 'pending'
+       OR (s.status = 'running' AND s.started_at <= now() - interval '15 minutes')
+    ORDER BY s.created_at ASC
+    FOR UPDATE OF s SKIP LOCKED
 ), updated AS (
-    UPDATE scan_runs sr
-    SET status = 'pending',
-        updated_at = now()
+    UPDATE scans s
+    SET status = 'running',
+        started_at = now()
     FROM claimed c
-    WHERE sr.id = c.id
-    RETURNING sr.id, sr.scan_id, sr.engine_id, sr.prompt_id, sr.provider_key_id, sr.try_number, sr.status, sr.answer_text, sr.raw_response, sr.brand_mentioned, sr.brand_domain_cited, sr.competitors_mentioned, sr.cited_domains, sr.error, sr.created_at, sr.started_at, sr.finished_at
+    WHERE s.id = c.id
+    RETURNING s.id, s.project_id, s.status, s.tries_per_prompt
 )
 SELECT
     p.brand_name AS brand_name,
@@ -177,11 +177,12 @@ SELECT
     pk.active AS provider_key_active,
     pk.monthly_run_limit,
     pk.monthly_runs_used
-FROM updated sr
-JOIN scans s
-    ON s.id = sr.scan_id
+FROM updated s
 JOIN projects p
     ON p.id = s.project_id
+JOIN scan_runs sr
+    ON sr.scan_id = s.id
+    AND sr.status IN ('pending', 'running')
 JOIN prompts pr
     ON pr.id = sr.prompt_id
 JOIN provider_keys pk

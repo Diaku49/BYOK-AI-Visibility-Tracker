@@ -5,7 +5,7 @@ CREATE TABLE IF NOT EXISTS scans (
     project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
 
     status TEXT NOT NULL DEFAULT 'pending' CHECK (
-        status IN ('pending', 'running', 'completed', 'failed', 'canceled')
+        status IN ('pending', 'running', 'analyzing', 'completed', 'failed', 'canceled')
     ),
 
     tries_per_prompt INT NOT NULL DEFAULT 1 CHECK (tries_per_prompt > 0),

@@ -20,8 +20,8 @@ const (
 )
 
 var (
-	ScanRunJobs  = make(chan *ScanRunTask)
-	AnalysisJobs = make(chan *AnalysisTask)
+	ScanRunJobs  = make(chan *ScanRunTask, 15)
+	AnalysisJobs = make(chan *AnalysisTask, 5)
 )
 
 type ScanRunTask struct {
@@ -81,8 +81,10 @@ func (wc *WorkerCoordinator) Start() {
 	for i := 0; i < 2; i++ {
 		go wc.StartScanWorker(ScanRunJobs)
 	}
+	go wc.ScanTaskProducer()
 
 	// Start Analyze Loop
+	go wc.AnalysisTaskProducer()
 	wc.StartAnalysisWorker(AnalysisJobs)
 }
 

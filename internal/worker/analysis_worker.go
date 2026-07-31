@@ -217,23 +217,22 @@ func (wc *WorkerCoordinator) ExecuteAnalysis(task *AnalysisTask) {
 }
 
 func (wc *WorkerCoordinator) StartAnalysisWorker(c chan *AnalysisTask) {
+	for task := range c {
+		wc.l.Info("analysis job received", "scan_id", task.Input.ScanID, "runs", len(task.Input.Runs))
+		wc.ExecuteAnalysis(task)
+	}
+}
+
+func (wc *WorkerCoordinator) AnalysisTaskProducer() {
 	ticker := time.NewTicker(pollInterval)
-	for {
-		select {
-		case task := <-c:
-			{
-				wc.l.Info("analysis job received", "scan_id", task.Input.ScanID, "runs", len(task.Input.Runs))
-				wc.ExecuteAnalysis(task)
-			}
-		case <-ticker.C:
-			{
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				if err := wc.GetAnalysisWork(ctx); err != nil {
-					wc.l.Error("failed getting analysis job", "error", err.Error())
-				}
-				cancel()
-				continue
-			}
+	defer ticker.Stop()
+
+	for range ticker.C {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+
+		if err := wc.GetAnalysisWork(ctx); err != nil {
+			wc.l.Error("failed getting analysis job", "error", err.Error())
 		}
+		cancel()
 	}
 }

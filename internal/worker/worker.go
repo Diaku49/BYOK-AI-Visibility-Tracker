@@ -16,25 +16,24 @@ var (
 )
 
 func (wc *WorkerCoordinator) StartScanWorker(c chan *ScanRunTask) {
+	for task := range c {
+		// Do ScanRunTask -- needs to be refactored
+		scanResponse := wc.ExecuteScanRun(task, 2, attemptInterval)
+		wc.l.Info("Scan ran", "ScanID", scanResponse.scanRunID)
+	}
+}
+
+func (wc *WorkerCoordinator) ScanTaskProducer() {
 	ticker := time.NewTicker(pollInterval)
-	for {
-		select {
-		case j := <-c:
-			{
-				// Do ScanRunTask -- needs to be refactored
-				scanResponse := wc.ExecuteScanRun(j, 2, attemptInterval)
-				wc.l.Info("Scan ran", "ScanID", scanResponse.scanRunID)
-			}
-		case <-ticker.C:
-			{
-				ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-				if err := wc.GetWork(ctx); err != nil {
-					wc.l.Error("Failed getting job", "Error", err.Error())
-				}
-				cancel()
-				continue
-			}
+	defer ticker.Stop()
+
+	for range ticker.C {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+
+		if err := wc.GetWork(ctx); err != nil {
+			wc.l.Error("Failed getting job", "Error", err.Error())
 		}
+		cancel()
 	}
 }
 
@@ -101,10 +100,10 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 			PromptID:      j.PromptID,
 			ProviderKeyID: j.ProviderKeyID,
 			TryNumber:     j.TryNumber,
-			Status:      "completed",
-			AnswerText:  &answerText,
-			RawResponse: rawJSON,
-			FinishedAt:  now,
+			Status:        "completed",
+			AnswerText:    &answerText,
+			RawResponse:   rawJSON,
+			FinishedAt:    now,
 		}); stErr != nil {
 			wc.l.Error("failed to update scan run result", "RunID", j.ScanRunID, "error", stErr)
 		}
