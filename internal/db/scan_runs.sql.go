@@ -370,6 +370,7 @@ const updateScanRunStateByID = `-- name: UpdateScanRunStateByID :one
 UPDATE scan_runs
 SET
     status = $1,
+    error = $2,
     started_at = CASE
         WHEN $1 = 'running' THEN now()
         ELSE started_at
@@ -378,17 +379,18 @@ SET
         WHEN $1 IN ('completed', 'failed', 'canceled') THEN now()
         ELSE finished_at
     END
-WHERE id = $2
+WHERE id = $3
 RETURNING id, scan_id, engine_id, prompt_id, provider_key_id, try_number, status, answer_text, raw_response, brand_mentioned, brand_domain_cited, competitors_mentioned, cited_domains, error, created_at, started_at, finished_at
 `
 
 type UpdateScanRunStateByIDParams struct {
 	Status string    `json:"status"`
+	Error  *string   `json:"error"`
 	ID     uuid.UUID `json:"id"`
 }
 
 func (q *Queries) UpdateScanRunStateByID(ctx context.Context, arg UpdateScanRunStateByIDParams) (ScanRun, error) {
-	row := q.db.QueryRow(ctx, updateScanRunStateByID, arg.Status, arg.ID)
+	row := q.db.QueryRow(ctx, updateScanRunStateByID, arg.Status, arg.Error, arg.ID)
 	var i ScanRun
 	err := row.Scan(
 		&i.ID,

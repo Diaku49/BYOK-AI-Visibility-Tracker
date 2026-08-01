@@ -7,6 +7,7 @@ WHERE id = $1;
 UPDATE scan_runs
 SET
     status = sqlc.arg(status),
+    error = sqlc.narg(error),
     started_at = CASE
         WHEN sqlc.arg(status) = 'running' THEN now()
         ELSE started_at

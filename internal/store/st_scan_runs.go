@@ -7,10 +7,11 @@ import (
 	"github.com/google/uuid"
 )
 
-func (s *Store) UpdateStateScanRunByID(ctx context.Context, scanRunID uuid.UUID, state string) (db.ScanRun, error) {
+func (s *Store) UpdateStateScanRunByID(ctx context.Context, scanRunID uuid.UUID, state string, errMsg *string) (db.ScanRun, error) {
 	return s.query.UpdateScanRunStateByID(ctx, db.UpdateScanRunStateByIDParams{
 		ID:     scanRunID,
 		Status: state,
+		Error:  errMsg,
 	})
 }
 

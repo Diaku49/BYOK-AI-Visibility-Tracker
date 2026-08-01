@@ -43,14 +43,22 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 	ctx := context.Background()
 
 	// changing scan run state with store method
-	if _, err := wc.st.UpdateStateScanRunByID(ctx, j.ScanRunID, "running"); err != nil {
+	if _, err := wc.st.UpdateStateScanRunByID(ctx, j.ScanRunID, "running", nil); err != nil {
 		wc.l.Error("failed to update scan run state to running", "RunID", j.ScanRunID, "error", err)
 	}
 
 	for ; retryAttempt > 0; retryAttempt-- {
 		runCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 
-		p := wc.providerRegistry[j.EngineID]
+		p, ok := wc.providerRegistry[j.EngineID]
+		if !ok {
+			errMsg := "Undefined Engine"
+			wc.l.Error(errMsg, "ScanID", j.ScanID, "RunID", j.ScanRunID, "Engine", j.EngineID)
+			scanResponse = ScanRunResult{
+				scanRunID: j.ScanRunID,
+				error:     errMsg,
+			}
+		}
 		result, err := p.Run(runCtx, j.APIKey, nil, j.Request)
 		cancel()
 
@@ -64,7 +72,7 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 
 			if !isRetryable(err) || retryAttempt == 1 {
 				// Terminal failure — persist failed state
-				if _, stErr := wc.st.UpdateStateScanRunByID(ctx, j.ScanRunID, "failed"); stErr != nil {
+				if _, stErr := wc.st.UpdateStateScanRunByID(ctx, j.ScanRunID, "failed", &errMsg); stErr != nil {
 					wc.l.Error("failed to update scan run state to failed", "RunID", j.ScanRunID, "error", stErr)
 				}
 				if stErr := wc.st.IncrementScanFailedRuns(ctx, j.ScanID); stErr != nil {
@@ -74,7 +82,7 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 			}
 
 			select {
-			case <-runCtx.Done():
+			case <-ctx.Done():
 				return &scanResponse
 			case <-time.After(retryInterval):
 				continue
