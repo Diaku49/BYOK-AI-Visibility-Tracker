@@ -35,8 +35,10 @@ SET
     competitors_mentioned = sqlc.narg(competitors_mentioned),
     cited_domains = sqlc.narg(cited_domains),
     error = sqlc.narg(error),
-    started_at = sqlc.narg(started_at),
-    finished_at = sqlc.narg(finished_at)
+    -- COALESCE so a caller that omits these does not blank out timestamps
+    -- already set by UpdateScanRunStateByID.
+    started_at = COALESCE(sqlc.narg(started_at), started_at),
+    finished_at = COALESCE(sqlc.narg(finished_at), finished_at)
 WHERE id = sqlc.arg(id)
 RETURNING *;
 
@@ -103,7 +105,7 @@ WITH claimed AS (
         started_at = now()
     FROM claimed c
     WHERE s.id = c.id
-    RETURNING s.id, s.project_id, s.status, s.tries_per_prompt
+    RETURNING s.id, s.project_id, s.status
 )
 SELECT
     p.brand_name AS brand_name,
@@ -116,7 +118,6 @@ SELECT
     sr.try_number,
     sr.status AS scan_run_status,
     s.status AS scan_status,
-    s.tries_per_prompt,
     p.language,
     p.region,
     pr.text AS prompt_text,

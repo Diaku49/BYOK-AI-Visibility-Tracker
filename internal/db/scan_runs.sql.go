@@ -154,7 +154,7 @@ WITH claimed AS (
         started_at = now()
     FROM claimed c
     WHERE s.id = c.id
-    RETURNING s.id, s.project_id, s.status, s.tries_per_prompt
+    RETURNING s.id, s.project_id, s.status
 )
 SELECT
     p.brand_name AS brand_name,
@@ -167,7 +167,6 @@ SELECT
     sr.try_number,
     sr.status AS scan_run_status,
     s.status AS scan_status,
-    s.tries_per_prompt,
     p.language,
     p.region,
     pr.text AS prompt_text,
@@ -201,7 +200,6 @@ type GetScansForWorkersRow struct {
 	TryNumber         int32     `json:"try_number"`
 	ScanRunStatus     string    `json:"scan_run_status"`
 	ScanStatus        string    `json:"scan_status"`
-	TriesPerPrompt    int32     `json:"tries_per_prompt"`
 	Language          string    `json:"language"`
 	Region            string    `json:"region"`
 	PromptText        string    `json:"prompt_text"`
@@ -233,7 +231,6 @@ func (q *Queries) GetScansForWorkers(ctx context.Context) ([]GetScansForWorkersR
 			&i.TryNumber,
 			&i.ScanRunStatus,
 			&i.ScanStatus,
-			&i.TriesPerPrompt,
 			&i.Language,
 			&i.Region,
 			&i.PromptText,
@@ -270,8 +267,10 @@ SET
     competitors_mentioned = $11,
     cited_domains = $12,
     error = $13,
-    started_at = $14,
-    finished_at = $15
+    -- COALESCE so a caller that omits these does not blank out timestamps
+    -- already set by UpdateScanRunStateByID.
+    started_at = COALESCE($14, started_at),
+    finished_at = COALESCE($15, finished_at)
 WHERE id = $16
 RETURNING id, scan_id, engine_id, prompt_id, provider_key_id, try_number, status, answer_text, raw_response, brand_mentioned, brand_domain_cited, competitors_mentioned, cited_domains, error, created_at, started_at, finished_at
 `

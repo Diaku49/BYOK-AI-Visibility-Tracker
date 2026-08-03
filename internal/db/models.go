@@ -61,18 +61,17 @@ type ProviderKey struct {
 }
 
 type Scan struct {
-	ID             uuid.UUID          `json:"id"`
-	ProjectID      uuid.UUID          `json:"project_id"`
-	Status         string             `json:"status"`
-	TriesPerPrompt int32              `json:"tries_per_prompt"`
-	TotalRuns      int32              `json:"total_runs"`
-	CompletedRuns  int32              `json:"completed_runs"`
-	FailedRuns     int32              `json:"failed_runs"`
-	Summary        []byte             `json:"summary"`
-	Error          *string            `json:"error"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-	StartedAt      pgtype.Timestamptz `json:"started_at"`
-	FinishedAt     pgtype.Timestamptz `json:"finished_at"`
+	ID            uuid.UUID          `json:"id"`
+	ProjectID     uuid.UUID          `json:"project_id"`
+	Status        string             `json:"status"`
+	TotalRuns     int32              `json:"total_runs"`
+	CompletedRuns int32              `json:"completed_runs"`
+	FailedRuns    int32              `json:"failed_runs"`
+	Summary       []byte             `json:"summary"`
+	Error         *string            `json:"error"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	StartedAt     pgtype.Timestamptz `json:"started_at"`
+	FinishedAt    pgtype.Timestamptz `json:"finished_at"`
 }
 
 type ScanRun struct {

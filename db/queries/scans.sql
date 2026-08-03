@@ -3,7 +3,6 @@ INSERT INTO scans (
     id,
     project_id,
     status,
-    tries_per_prompt,
     total_runs,
     completed_runs,
     failed_runs,
@@ -16,7 +15,6 @@ VALUES (
     sqlc.arg(id),
     sqlc.arg(project_id),
     sqlc.arg(status),
-    sqlc.arg(tries_per_prompt),
     sqlc.arg(total_runs),
     sqlc.arg(completed_runs),
     sqlc.arg(failed_runs),
@@ -37,7 +35,6 @@ UPDATE scans
 SET
     project_id = sqlc.arg(project_id),
     status = sqlc.arg(status),
-    tries_per_prompt = sqlc.arg(tries_per_prompt),
     total_runs = sqlc.arg(total_runs),
     completed_runs = sqlc.arg(completed_runs),
     failed_runs = sqlc.arg(failed_runs),

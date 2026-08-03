@@ -58,6 +58,9 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 				scanRunID: j.ScanRunID,
 				error:     errMsg,
 			}
+
+			cancel()
+			return &scanResponse
 		}
 		result, err := p.Run(runCtx, j.APIKey, nil, j.Request)
 		cancel()

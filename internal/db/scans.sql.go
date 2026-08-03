@@ -17,7 +17,6 @@ INSERT INTO scans (
     id,
     project_id,
     status,
-    tries_per_prompt,
     total_runs,
     completed_runs,
     failed_runs,
@@ -36,24 +35,22 @@ VALUES (
     $7,
     $8,
     $9,
-    $10,
-    $11
+    $10
 )
-RETURNING id, project_id, status, tries_per_prompt, total_runs, completed_runs, failed_runs, summary, error, created_at, started_at, finished_at
+RETURNING id, project_id, status, total_runs, completed_runs, failed_runs, summary, error, created_at, started_at, finished_at
 `
 
 type CreateScanParams struct {
-	ID             uuid.UUID          `json:"id"`
-	ProjectID      uuid.UUID          `json:"project_id"`
-	Status         string             `json:"status"`
-	TriesPerPrompt int32              `json:"tries_per_prompt"`
-	TotalRuns      int32              `json:"total_runs"`
-	CompletedRuns  int32              `json:"completed_runs"`
-	FailedRuns     int32              `json:"failed_runs"`
-	Summary        []byte             `json:"summary"`
-	Error          *string            `json:"error"`
-	StartedAt      pgtype.Timestamptz `json:"started_at"`
-	FinishedAt     pgtype.Timestamptz `json:"finished_at"`
+	ID            uuid.UUID          `json:"id"`
+	ProjectID     uuid.UUID          `json:"project_id"`
+	Status        string             `json:"status"`
+	TotalRuns     int32              `json:"total_runs"`
+	CompletedRuns int32              `json:"completed_runs"`
+	FailedRuns    int32              `json:"failed_runs"`
+	Summary       []byte             `json:"summary"`
+	Error         *string            `json:"error"`
+	StartedAt     pgtype.Timestamptz `json:"started_at"`
+	FinishedAt    pgtype.Timestamptz `json:"finished_at"`
 }
 
 func (q *Queries) CreateScan(ctx context.Context, arg CreateScanParams) (Scan, error) {
@@ -61,7 +58,6 @@ func (q *Queries) CreateScan(ctx context.Context, arg CreateScanParams) (Scan, e
 		arg.ID,
 		arg.ProjectID,
 		arg.Status,
-		arg.TriesPerPrompt,
 		arg.TotalRuns,
 		arg.CompletedRuns,
 		arg.FailedRuns,
@@ -75,7 +71,6 @@ func (q *Queries) CreateScan(ctx context.Context, arg CreateScanParams) (Scan, e
 		&i.ID,
 		&i.ProjectID,
 		&i.Status,
-		&i.TriesPerPrompt,
 		&i.TotalRuns,
 		&i.CompletedRuns,
 		&i.FailedRuns,
@@ -89,7 +84,7 @@ func (q *Queries) CreateScan(ctx context.Context, arg CreateScanParams) (Scan, e
 }
 
 const getScanByID = `-- name: GetScanByID :one
-SELECT id, project_id, status, tries_per_prompt, total_runs, completed_runs, failed_runs, summary, error, created_at, started_at, finished_at
+SELECT id, project_id, status, total_runs, completed_runs, failed_runs, summary, error, created_at, started_at, finished_at
 FROM scans
 WHERE id = $1
 `
@@ -105,7 +100,6 @@ func (q *Queries) GetScanByID(ctx context.Context, arg GetScanByIDParams) (Scan,
 		&i.ID,
 		&i.ProjectID,
 		&i.Status,
-		&i.TriesPerPrompt,
 		&i.TotalRuns,
 		&i.CompletedRuns,
 		&i.FailedRuns,
@@ -153,37 +147,34 @@ UPDATE scans
 SET
     project_id = $1,
     status = $2,
-    tries_per_prompt = $3,
-    total_runs = $4,
-    completed_runs = $5,
-    failed_runs = $6,
-    summary = $7,
-    error = $8,
-    started_at = $9,
-    finished_at = $10
-WHERE id = $11
-RETURNING id, project_id, status, tries_per_prompt, total_runs, completed_runs, failed_runs, summary, error, created_at, started_at, finished_at
+    total_runs = $3,
+    completed_runs = $4,
+    failed_runs = $5,
+    summary = $6,
+    error = $7,
+    started_at = $8,
+    finished_at = $9
+WHERE id = $10
+RETURNING id, project_id, status, total_runs, completed_runs, failed_runs, summary, error, created_at, started_at, finished_at
 `
 
 type UpdateScanParams struct {
-	ProjectID      uuid.UUID          `json:"project_id"`
-	Status         string             `json:"status"`
-	TriesPerPrompt int32              `json:"tries_per_prompt"`
-	TotalRuns      int32              `json:"total_runs"`
-	CompletedRuns  int32              `json:"completed_runs"`
-	FailedRuns     int32              `json:"failed_runs"`
-	Summary        []byte             `json:"summary"`
-	Error          *string            `json:"error"`
-	StartedAt      pgtype.Timestamptz `json:"started_at"`
-	FinishedAt     pgtype.Timestamptz `json:"finished_at"`
-	ID             uuid.UUID          `json:"id"`
+	ProjectID     uuid.UUID          `json:"project_id"`
+	Status        string             `json:"status"`
+	TotalRuns     int32              `json:"total_runs"`
+	CompletedRuns int32              `json:"completed_runs"`
+	FailedRuns    int32              `json:"failed_runs"`
+	Summary       []byte             `json:"summary"`
+	Error         *string            `json:"error"`
+	StartedAt     pgtype.Timestamptz `json:"started_at"`
+	FinishedAt    pgtype.Timestamptz `json:"finished_at"`
+	ID            uuid.UUID          `json:"id"`
 }
 
 func (q *Queries) UpdateScan(ctx context.Context, arg UpdateScanParams) (Scan, error) {
 	row := q.db.QueryRow(ctx, updateScan,
 		arg.ProjectID,
 		arg.Status,
-		arg.TriesPerPrompt,
 		arg.TotalRuns,
 		arg.CompletedRuns,
 		arg.FailedRuns,
@@ -198,7 +189,6 @@ func (q *Queries) UpdateScan(ctx context.Context, arg UpdateScanParams) (Scan, e
 		&i.ID,
 		&i.ProjectID,
 		&i.Status,
-		&i.TriesPerPrompt,
 		&i.TotalRuns,
 		&i.CompletedRuns,
 		&i.FailedRuns,

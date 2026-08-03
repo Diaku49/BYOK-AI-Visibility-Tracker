@@ -8,8 +8,6 @@ CREATE TABLE IF NOT EXISTS scans (
         status IN ('pending', 'running', 'analyzing', 'completed', 'failed', 'canceled')
     ),
 
-    tries_per_prompt INT NOT NULL DEFAULT 1 CHECK (tries_per_prompt > 0),
-
     total_runs INT NOT NULL DEFAULT 0 CHECK (total_runs >= 0),
     completed_runs INT NOT NULL DEFAULT 0 CHECK (completed_runs >= 0),
     failed_runs INT NOT NULL DEFAULT 0 CHECK (failed_runs >= 0),
