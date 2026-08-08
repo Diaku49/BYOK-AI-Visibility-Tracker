@@ -7,6 +7,12 @@ import (
 	"github.com/google/uuid"
 )
 
+// not finished yet
+func (s *Store) CreateScan(ctx context.Context, userID, projectID uuid.UUID) (uuid.UUID, error) {
+
+	return uuid.Nil, nil
+}
+
 func (s *Store) GetScansForWorkers(ctx context.Context) ([]db.GetScansForWorkersRow, error) {
 	return s.query.GetScansForWorkers(ctx)
 }

@@ -35,6 +35,15 @@ func (s *Server) Route(h *handlers.ServerHandler) http.Handler {
 	mux.Handle("POST /key", authMiddleware(http.HandlerFunc(h.CreateProviderKey)))
 
 	// projects
+	mux.Handle("POST /project", authMiddleware(http.HandlerFunc(h.CreateProject)))
+	mux.Handle("GET /project", authMiddleware(http.HandlerFunc(h.GetAllProjectsForUser)))
+	mux.Handle("GET /project/{projectID}", authMiddleware(http.HandlerFunc(h.GetProjectByID)))
+	mux.Handle("PUT /project/{projectID}", authMiddleware(http.HandlerFunc(h.UpdateProjectByID)))
+
+	// scans
+	mux.Handle("POST /scan/{projectID}", authMiddleware(http.HandlerFunc(h.BeginScan)))
+	mux.Handle("GET /scan", authMiddleware(http.HandlerFunc(h.GetAllScansForUser)))
+	mux.Handle("GET /scan/{scanID}", authMiddleware(http.HandlerFunc(h.GetScanByID)))
 
 	// subscriptions
 
