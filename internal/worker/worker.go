@@ -17,7 +17,6 @@ var (
 
 func (wc *WorkerCoordinator) StartScanWorker(c chan *ScanRunTask) {
 	for task := range c {
-		// Do ScanRunTask -- needs to be refactored
 		scanResponse := wc.ExecuteScanRun(task, 2, attemptInterval)
 		wc.l.Info("Scan ran", "ScanID", scanResponse.scanRunID)
 	}
@@ -37,7 +36,6 @@ func (wc *WorkerCoordinator) ScanTaskProducer() {
 	}
 }
 
-// Need to implement storing in db
 func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, retryInterval time.Duration) *ScanRunResult {
 	var scanResponse ScanRunResult
 	ctx := context.Background()
@@ -59,9 +57,17 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 				error:     errMsg,
 			}
 
+			if _, stErr := wc.st.UpdateStateScanRunByID(ctx, j.ScanRunID, "failed", &errMsg); stErr != nil {
+				wc.l.Error("failed to update scan run state to failed", "RunID", j.ScanRunID, "error", stErr)
+			}
+			if stErr := wc.st.IncrementScanFailedRuns(ctx, j.ScanID); stErr != nil {
+				wc.l.Error("failed to increment scan failed runs", "ScanID", j.ScanID, "error", stErr)
+			}
+
 			cancel()
 			return &scanResponse
 		}
+
 		result, err := p.Run(runCtx, j.APIKey, nil, j.Request)
 		cancel()
 
@@ -84,12 +90,8 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 				break
 			}
 
-			select {
-			case <-ctx.Done():
-				return &scanResponse
-			case <-time.After(retryInterval):
-				continue
-			}
+			<-time.After(retryInterval)
+			continue
 		}
 
 		scanResponse = ScanRunResult{
@@ -98,8 +100,11 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 			error:     "",
 		}
 
-		// Marshal raw response for storage
-		rawJSON, _ := json.Marshal(result.Raw)
+		// Marshal raw response for storage - not gonna be used for anything else, just for logging and debugging
+		rawJSON, err := json.Marshal(result.Raw)
+		if err != nil {
+			wc.l.Error("failed to marshal raw response", "RunID", j.ScanRunID, "error", err)
+		}
 
 		// Update the scan run with results
 		answerText := result.AnswerText

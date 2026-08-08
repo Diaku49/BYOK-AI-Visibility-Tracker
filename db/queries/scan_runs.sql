@@ -59,8 +59,10 @@ WITH ready_scans AS (
       AND NOT EXISTS (
           SELECT 1 FROM scan_runs sr
           WHERE sr.scan_id = s.id
-            AND sr.status NOT IN ('completed', 'failed')
+            AND sr.status NOT IN ('pending', 'running')
       )
+      OR (s.status = 'analyzing' AND s.started_at <= now() - interval '15 minutes')
+    ORDER BY s.created_at ASC
     FOR UPDATE OF s SKIP LOCKED
 ), claimed AS (
     UPDATE scans s

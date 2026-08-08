@@ -12,6 +12,8 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+//********** Needs Complete Refactoring **********
+
 func (wc *WorkerCoordinator) GetAnalysisWork(ctx context.Context) error {
 	rows, err := wc.st.GetScansForAnalysis(ctx)
 	if err != nil {
