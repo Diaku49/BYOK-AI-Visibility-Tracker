@@ -25,6 +25,13 @@ FROM provider_keys
 WHERE id = $1
   AND user_id = $2;
 
+-- name: GetProviderKeyByIDForUserAndEngine :one
+SELECT *
+FROM provider_keys
+WHERE id = $1
+  AND user_id = $2
+  AND engine_id = $3;
+
 -- name: ListProviderKeysByUserID :many
 SELECT *
 FROM provider_keys

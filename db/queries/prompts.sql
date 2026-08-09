@@ -51,6 +51,16 @@ WHERE pr.project_id = sqlc.arg(project_id)
   AND p.user_id = sqlc.arg(user_id)
 ORDER BY pr.created_at DESC;
 
+-- name: ListActivePromptIDsForScan :many
+SELECT pr.id
+FROM prompts pr
+JOIN projects p
+  ON p.id = pr.project_id
+WHERE pr.project_id = sqlc.arg(project_id)
+  AND p.user_id = sqlc.arg(user_id)
+  AND pr.active = true
+ORDER BY pr.created_at ASC;
+
 -- name: UpdatePromptForUser :one
 UPDATE prompts pr
 SET

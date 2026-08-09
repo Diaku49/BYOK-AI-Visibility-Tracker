@@ -20,14 +20,14 @@ import (
 )
 
 type ServerHandler struct {
-	st        store.Store
+	st        *store.Store
 	l         *slog.Logger
 	v         *validator.Validate
 	cfg       *config.Config
 	keyCipher *pkg.KeyCipher
 }
 
-func NewServerHandler(store store.Store, cfg *config.Config, kc *pkg.KeyCipher) *ServerHandler {
+func NewServerHandler(store *store.Store, cfg *config.Config, kc *pkg.KeyCipher) *ServerHandler {
 	pkg.Validate.RegisterTagNameFunc(func(fld reflect.StructField) string {
 		name := strings.SplitN(fld.Tag.Get("json"), ",", 2)[0]
 		if name == "-" {

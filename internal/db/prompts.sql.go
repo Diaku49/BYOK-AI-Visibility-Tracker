@@ -127,6 +127,42 @@ func (q *Queries) GetPromptByIDForUser(ctx context.Context, arg GetPromptByIDFor
 	return i, err
 }
 
+const listActivePromptIDsForScan = `-- name: ListActivePromptIDsForScan :many
+SELECT pr.id
+FROM prompts pr
+JOIN projects p
+  ON p.id = pr.project_id
+WHERE pr.project_id = $1
+  AND p.user_id = $2
+  AND pr.active = true
+ORDER BY pr.created_at ASC
+`
+
+type ListActivePromptIDsForScanParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	UserID    uuid.UUID `json:"user_id"`
+}
+
+func (q *Queries) ListActivePromptIDsForScan(ctx context.Context, arg ListActivePromptIDsForScanParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listActivePromptIDsForScan, arg.ProjectID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPromptsByProjectForUser = `-- name: ListPromptsByProjectForUser :many
 SELECT pr.id, pr.project_id, pr.text, pr.active, pr.created_at, pr.updated_at
 FROM prompts pr

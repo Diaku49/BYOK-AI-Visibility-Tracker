@@ -3,6 +3,19 @@ SELECT *
 FROM scan_runs
 WHERE id = $1;
 
+-- name: ClaimScanRun :one
+UPDATE scan_runs
+SET
+    status = 'running',
+    started_at = now()
+WHERE id = sqlc.arg(id)
+  AND scan_id = sqlc.arg(scan_id)
+  AND (
+      status = 'pending'
+      OR (status = 'running' AND started_at <= now() - interval '15 minutes')
+  )
+RETURNING *;
+
 -- name: UpdateScanRunStateByID :one
 UPDATE scan_runs
 SET
@@ -49,66 +62,52 @@ SET
     brand_domain_cited = sqlc.arg(brand_domain_cited),
     competitors_mentioned = sqlc.arg(competitors_mentioned),
     cited_domains = sqlc.arg(cited_domains)
-WHERE id = sqlc.arg(id);
+WHERE id = sqlc.arg(id)
+  AND scan_id = sqlc.arg(scan_id);
 
--- name: GetScansForAnalysis :many
-WITH ready_scans AS (
-    SELECT s.id
-    FROM scans s
-    WHERE s.status = 'running'
-      AND NOT EXISTS (
-          SELECT 1 FROM scan_runs sr
-          WHERE sr.scan_id = s.id
-            AND sr.status NOT IN ('pending', 'running')
-      )
-      OR (s.status = 'analyzing' AND s.started_at <= now() - interval '15 minutes')
-    ORDER BY s.created_at ASC
-    FOR UPDATE OF s SKIP LOCKED
-), claimed AS (
-    UPDATE scans s
-    SET status = 'analyzing'
-    FROM ready_scans rs
-    WHERE s.id = rs.id
-    RETURNING s.id, s.project_id
+-- name: CreateScanRuns :execrows
+INSERT INTO scan_runs (
+    id,
+    scan_id,
+    engine_id,
+    prompt_id,
+    provider_key_id
 )
 SELECT
-    c.id AS scan_id,
-    c.project_id,
-    p.brand_name,
-    p.domain AS brand_domain,
-    sr.id AS scan_run_id,
-    sr.engine_id,
-    sr.prompt_id,
-    sr.provider_key_id,
-    sr.status AS scan_run_status,
-    sr.answer_text,
-    sr.raw_response,
-    pr.text AS prompt_text,
-    pk.encrypted_key,
-    pk.key_nonce
-FROM claimed c
-JOIN projects p ON p.id = c.project_id
-JOIN scan_runs sr ON sr.scan_id = c.id
-JOIN prompts pr ON pr.id = sr.prompt_id
-JOIN provider_keys pk ON pk.id = sr.provider_key_id
-ORDER BY c.id, sr.created_at ASC;
+    unnest(sqlc.arg(ids)::uuid[]),
+    sqlc.arg(scan_id),
+    unnest(sqlc.arg(engine_ids)::text[]),
+    unnest(sqlc.arg(prompt_ids)::uuid[]),
+    unnest(sqlc.arg(provider_key_ids)::uuid[]);
 
--- name: GetScansForWorkers :many
-WITH claimed AS (
+-- name: ClaimScansForWorkers :many
+WITH eligible_scans AS (
     SELECT s.id
     FROM scans s
-    WHERE s.status = 'pending'
-       OR (s.status = 'running' AND s.started_at <= now() - interval '15 minutes')
+    WHERE (
+        s.status = 'pending'
+        OR (s.status = 'running' AND s.started_at <= now() - interval '15 minutes')
+    )
+      AND EXISTS (
+          SELECT 1
+          FROM scan_runs sr
+          WHERE sr.scan_id = s.id
+            AND (
+                sr.status = 'pending'
+                OR (sr.status = 'running' AND sr.started_at <= now() - interval '15 minutes')
+            )
+      )
     ORDER BY s.created_at ASC
     FOR UPDATE OF s SKIP LOCKED
-), updated AS (
-    UPDATE scans s
-    SET status = 'running',
-        started_at = now()
-    FROM claimed c
-    WHERE s.id = c.id
-    RETURNING s.id, s.project_id, s.status
 )
+UPDATE scans s
+SET status = 'running',
+    started_at = now()
+FROM eligible_scans es
+WHERE s.id = es.id
+RETURNING s.id;
+
+-- name: GetEligibleScanRunsForWorkers :many
 SELECT
     p.brand_name AS brand_name,
     p.domain AS brand_domain,
@@ -129,14 +128,18 @@ SELECT
     pk.active AS provider_key_active,
     pk.monthly_run_limit,
     pk.monthly_runs_used
-FROM updated s
+FROM scan_runs sr
+JOIN scans s
+    ON s.id = sr.scan_id
 JOIN projects p
     ON p.id = s.project_id
-JOIN scan_runs sr
-    ON sr.scan_id = s.id
-    AND sr.status IN ('pending', 'running')
 JOIN prompts pr
     ON pr.id = sr.prompt_id
 JOIN provider_keys pk
     ON pk.id = sr.provider_key_id
+WHERE sr.scan_id = ANY(sqlc.arg(scan_ids)::uuid[])
+  AND (
+      sr.status = 'pending'
+      OR (sr.status = 'running' AND sr.started_at <= now() - interval '15 minutes')
+  )
 ORDER BY sr.created_at ASC;

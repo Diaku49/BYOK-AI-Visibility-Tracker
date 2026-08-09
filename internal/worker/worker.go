@@ -3,16 +3,26 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
 	"github.com/Diaku49/AI-visibility-tracker/internal/db"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
 var (
 	pollInterval    = 10 * time.Second
 	attemptInterval = 5 * time.Second
+)
+var (
+	errMessageClaimScanRun         = "failed to claim scan run"
+	errMessageDecryptProviderKey   = "failed to decrypt provider key"
+	errMessageUndefinedEngine      = "Undefined Engine"
+	errMessageMarshalRawResponse   = "failed to marshal raw response"
+	errMessageMarkScanRunCompleted = "failed to mark scan run as completed"
+	errMessageMarkScanRunFailed    = "failed to mark scan run as failed"
 )
 
 func (wc *WorkerCoordinator) StartScanWorker(c chan *ScanRunTask) {
@@ -37,12 +47,28 @@ func (wc *WorkerCoordinator) ScanTaskProducer() {
 }
 
 func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, retryInterval time.Duration) *ScanRunResult {
-	var scanResponse ScanRunResult
+	scanResponse := ScanRunResult{scanRunID: j.ScanRunID}
 	ctx := context.Background()
 
-	// changing scan run state with store method
-	if _, err := wc.st.UpdateStateScanRunByID(ctx, j.ScanRunID, "running", nil); err != nil {
-		wc.l.Error("failed to update scan run state to running", "RunID", j.ScanRunID, "error", err)
+	if _, err := wc.st.ClaimScanRun(ctx, j.ScanRunID, j.ScanID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			wc.l.Info("scan run already claimed", "scan_id", j.ScanID, "run_id", j.ScanRunID)
+			return &scanResponse
+		}
+
+		wc.l.Error(errMessageClaimScanRun, "scan_id", j.ScanID, "run_id", j.ScanRunID, "error", err)
+		return &scanResponse
+	}
+
+	apiKey, err := wc.keyCipher.Decrypt(j.EncryptedKey, j.KeyNonce)
+	if err != nil {
+		errMsg := errMessageDecryptProviderKey
+		scanResponse.error = errMsg
+		wc.l.Error(errMsg, "scan_run_id", j.ScanRunID, "provider_key_id", j.ProviderKeyID, "error", err)
+		if stErr := wc.st.MarkScanRunFailed(ctx, j.ScanRunID, j.ScanID, &errMsg); stErr != nil {
+			wc.l.Error(errMessageMarkScanRunFailed, "run_id", j.ScanRunID, "error", stErr)
+		}
+		return &scanResponse
 	}
 
 	for ; retryAttempt > 0; retryAttempt-- {
@@ -50,25 +76,22 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 
 		p, ok := wc.providerRegistry[j.EngineID]
 		if !ok {
-			errMsg := "Undefined Engine"
+			errMsg := errMessageUndefinedEngine
 			wc.l.Error(errMsg, "ScanID", j.ScanID, "RunID", j.ScanRunID, "Engine", j.EngineID)
 			scanResponse = ScanRunResult{
 				scanRunID: j.ScanRunID,
 				error:     errMsg,
 			}
 
-			if _, stErr := wc.st.UpdateStateScanRunByID(ctx, j.ScanRunID, "failed", &errMsg); stErr != nil {
-				wc.l.Error("failed to update scan run state to failed", "RunID", j.ScanRunID, "error", stErr)
-			}
-			if stErr := wc.st.IncrementScanFailedRuns(ctx, j.ScanID); stErr != nil {
-				wc.l.Error("failed to increment scan failed runs", "ScanID", j.ScanID, "error", stErr)
+			if stErr := wc.st.MarkScanRunFailed(ctx, j.ScanRunID, j.ScanID, &errMsg); stErr != nil {
+				wc.l.Error(errMessageMarkScanRunFailed, "RunID", j.ScanRunID, "error", stErr)
 			}
 
 			cancel()
 			return &scanResponse
 		}
 
-		result, err := p.Run(runCtx, j.APIKey, nil, j.Request)
+		result, err := p.Run(runCtx, string(apiKey), nil, j.Request)
 		cancel()
 
 		if err != nil {
@@ -81,11 +104,8 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 
 			if !isRetryable(err) || retryAttempt == 1 {
 				// Terminal failure — persist failed state
-				if _, stErr := wc.st.UpdateStateScanRunByID(ctx, j.ScanRunID, "failed", &errMsg); stErr != nil {
-					wc.l.Error("failed to update scan run state to failed", "RunID", j.ScanRunID, "error", stErr)
-				}
-				if stErr := wc.st.IncrementScanFailedRuns(ctx, j.ScanID); stErr != nil {
-					wc.l.Error("failed to increment scan failed runs", "ScanID", j.ScanID, "error", stErr)
+				if stErr := wc.st.MarkScanRunFailed(ctx, j.ScanRunID, j.ScanID, &errMsg); stErr != nil {
+					wc.l.Error(errMessageMarkScanRunFailed, "RunID", j.ScanRunID, "error", stErr)
 				}
 				break
 			}
@@ -103,13 +123,13 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 		// Marshal raw response for storage - not gonna be used for anything else, just for logging and debugging
 		rawJSON, err := json.Marshal(result.Raw)
 		if err != nil {
-			wc.l.Error("failed to marshal raw response", "RunID", j.ScanRunID, "error", err)
+			wc.l.Error(errMessageMarshalRawResponse, "RunID", j.ScanRunID, "error", err)
 		}
 
 		// Update the scan run with results
 		answerText := result.AnswerText
 		now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
-		if _, stErr := wc.st.UpdateScanRunByID(ctx, db.UpdateScanRunParams{
+		if stErr := wc.st.MarkScanRunCompleted(ctx, db.UpdateScanRunParams{
 			ID:            j.ScanRunID,
 			ScanID:        j.ScanID,
 			EngineID:      j.EngineID,
@@ -121,13 +141,11 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 			RawResponse:   rawJSON,
 			FinishedAt:    now,
 		}); stErr != nil {
-			wc.l.Error("failed to update scan run result", "RunID", j.ScanRunID, "error", stErr)
+			wc.l.Error(errMessageMarkScanRunCompleted, "RunID", j.ScanRunID, "error", stErr)
+			return &scanResponse
 		}
 
 		wc.l.Info("scan run completed", "scan_id", j.ScanID, "run_id", j.ScanRunID, "engine", j.EngineID)
-		if stErr := wc.st.IncrementScanCompletedRuns(ctx, j.ScanID); stErr != nil {
-			wc.l.Error("failed to increment scan completed runs", "ScanID", j.ScanID, "error", stErr)
-		}
 		break
 	}
 

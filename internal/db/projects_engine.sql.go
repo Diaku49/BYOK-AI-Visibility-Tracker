@@ -76,6 +76,49 @@ func (q *Queries) DeleteProjectEngineForUser(ctx context.Context, arg DeleteProj
 	return err
 }
 
+const listActiveProjectEnginesForScan = `-- name: ListActiveProjectEnginesForScan :many
+SELECT pe.engine_id, pe.provider_key_id
+FROM project_engines pe
+JOIN projects p
+  ON p.id = pe.project_id
+JOIN provider_keys pk
+  ON pk.id = pe.provider_key_id
+WHERE pe.project_id = $1
+  AND p.user_id = $2
+  AND pk.active = true
+ORDER BY pe.engine_id ASC
+`
+
+type ListActiveProjectEnginesForScanParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	UserID    uuid.UUID `json:"user_id"`
+}
+
+type ListActiveProjectEnginesForScanRow struct {
+	EngineID      string    `json:"engine_id"`
+	ProviderKeyID uuid.UUID `json:"provider_key_id"`
+}
+
+func (q *Queries) ListActiveProjectEnginesForScan(ctx context.Context, arg ListActiveProjectEnginesForScanParams) ([]ListActiveProjectEnginesForScanRow, error) {
+	rows, err := q.db.Query(ctx, listActiveProjectEnginesForScan, arg.ProjectID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListActiveProjectEnginesForScanRow
+	for rows.Next() {
+		var i ListActiveProjectEnginesForScanRow
+		if err := rows.Scan(&i.EngineID, &i.ProviderKeyID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateProjectEngineForUser = `-- name: UpdateProjectEngineForUser :one
 UPDATE project_engines pe
 SET

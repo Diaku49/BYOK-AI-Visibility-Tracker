@@ -25,7 +25,7 @@ func (h *ServerHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	projectID, err := h.st.CreateProject(r.Context(), userID, req.Name, req.Description, req.Language, req.Region)
+	projectID, err := h.st.CreateProject(r.Context(), userID, req)
 	if err != nil {
 		HTTPError(w, http.StatusInternalServerError, "failed to create project", nil)
 		l.Error(err.Error())

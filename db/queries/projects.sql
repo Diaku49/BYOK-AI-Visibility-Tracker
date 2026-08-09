@@ -10,7 +10,7 @@ INSERT INTO projects (
 VALUES (
     $1, $2, $3, $4, $5, $6
 )
-RETURNING *;
+RETURNING id;
 
 -- name: GetProjectByID :one
 SELECT *

@@ -23,7 +23,7 @@ INSERT INTO projects (
 VALUES (
     $1, $2, $3, $4, $5, $6
 )
-RETURNING id, user_id, brand_name, domain, language, region, created_at, updated_at
+RETURNING id
 `
 
 type CreateProjectParams struct {
@@ -35,7 +35,7 @@ type CreateProjectParams struct {
 	Region    string    `json:"region"`
 }
 
-func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (Project, error) {
+func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, createProject,
 		arg.ID,
 		arg.UserID,
@@ -44,18 +44,9 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		arg.Language,
 		arg.Region,
 	)
-	var i Project
-	err := row.Scan(
-		&i.ID,
-		&i.UserID,
-		&i.BrandName,
-		&i.Domain,
-		&i.Language,
-		&i.Region,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-	)
-	return i, err
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getProjectByID = `-- name: GetProjectByID :one

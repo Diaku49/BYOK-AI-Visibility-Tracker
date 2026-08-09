@@ -143,6 +143,39 @@ func (q *Queries) GetProviderKeyByIDForUser(ctx context.Context, arg GetProvider
 	return i, err
 }
 
+const getProviderKeyByIDForUserAndEngine = `-- name: GetProviderKeyByIDForUserAndEngine :one
+SELECT id, user_id, engine_id, name, encrypted_key, key_nonce, active, monthly_run_limit, monthly_runs_used, created_at, updated_at
+FROM provider_keys
+WHERE id = $1
+  AND user_id = $2
+  AND engine_id = $3
+`
+
+type GetProviderKeyByIDForUserAndEngineParams struct {
+	ID       uuid.UUID `json:"id"`
+	UserID   uuid.UUID `json:"user_id"`
+	EngineID string    `json:"engine_id"`
+}
+
+func (q *Queries) GetProviderKeyByIDForUserAndEngine(ctx context.Context, arg GetProviderKeyByIDForUserAndEngineParams) (ProviderKey, error) {
+	row := q.db.QueryRow(ctx, getProviderKeyByIDForUserAndEngine, arg.ID, arg.UserID, arg.EngineID)
+	var i ProviderKey
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.EngineID,
+		&i.Name,
+		&i.EncryptedKey,
+		&i.KeyNonce,
+		&i.Active,
+		&i.MonthlyRunLimit,
+		&i.MonthlyRunsUsed,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const listProviderKeysByUserID = `-- name: ListProviderKeysByUserID :many
 SELECT id, user_id, engine_id, name, encrypted_key, key_nonce, active, monthly_run_limit, monthly_runs_used, created_at, updated_at
 FROM provider_keys

@@ -20,8 +20,8 @@ const (
 )
 
 var (
-	ScanRunJobs  = make(chan *ScanRunTask, 15)
-	AnalysisJobs = make(chan *AnalysisTask, 5)
+	ScanRunJobs  = make(chan *ScanRunTask, 20)
+	AnalysisJobs = make(chan *AnalysisTask, 15)
 )
 
 type ScanRunTask struct {
@@ -34,9 +34,10 @@ type ScanRunTask struct {
 	BrandName   string
 	BrandDomain string
 
-	EngineID string
-	APIKey   string
-	Request  provider.PromptRunRequest
+	EngineID     string
+	EncryptedKey []byte
+	KeyNonce     []byte
+	Request      provider.PromptRunRequest
 }
 
 type ScanRunResult struct {
@@ -46,9 +47,10 @@ type ScanRunResult struct {
 }
 
 type AnalysisTask struct {
-	Input    a.ScanAnalysisInput
-	EngineID string
-	APIKey   string
+	Input        a.ScanAnalysisInput
+	EngineID     string
+	EncryptedKey []byte
+	KeyNonce     []byte
 
 	ProjectID     uuid.UUID
 	TotalRuns     int32
@@ -63,13 +65,13 @@ type WorkerCoordinator struct {
 	providerRegistry map[string]provider.Runner
 }
 
-func NewCoordinator(store *store.Store, logger slog.Logger, keyCipher *pkg.KeyCipher) *WorkerCoordinator {
+func NewCoordinator(store *store.Store, logger *slog.Logger, keyCipher *pkg.KeyCipher) *WorkerCoordinator {
 	providers := make(map[string]provider.Runner)
 	providers[GeminiEngineID] = gemini.NewGeminiProvider()
 	providers[OpenAIEngineID] = openai.NewOpenAIProvider()
 
 	return &WorkerCoordinator{
-		l:                &logger,
+		l:                logger,
 		st:               store,
 		keyCipher:        keyCipher,
 		providerRegistry: providers,
@@ -95,16 +97,6 @@ func (wc *WorkerCoordinator) GetWork(ctx context.Context) error {
 	}
 
 	for _, row := range rows {
-		apiKey, err := wc.keyCipher.Decrypt(row.EncryptedKey, row.KeyNonce)
-		if err != nil {
-			wc.l.Error("failed to decrypt provider key",
-				"scan_run_id", row.ScanRunID,
-				"provider_key_id", row.ProviderKeyID,
-				"error", err,
-			)
-			continue
-		}
-
 		task := &ScanRunTask{
 			ScanID:        row.ScanID,
 			ScanRunID:     row.ScanRunID,
@@ -114,7 +106,8 @@ func (wc *WorkerCoordinator) GetWork(ctx context.Context) error {
 			BrandName:     row.BrandName,
 			BrandDomain:   row.BrandDomain,
 			EngineID:      row.EngineID,
-			APIKey:        string(apiKey),
+			EncryptedKey:  row.EncryptedKey,
+			KeyNonce:      row.KeyNonce,
 			Request: provider.PromptRunRequest{
 				PromptText: row.PromptText,
 				Language:   row.Language,

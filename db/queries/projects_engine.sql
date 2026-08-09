@@ -17,6 +17,18 @@ WHERE p.id = sqlc.arg(project_id)
   AND pk.engine_id = sqlc.arg(engine_id)
 RETURNING *;
 
+-- name: ListActiveProjectEnginesForScan :many
+SELECT pe.engine_id, pe.provider_key_id
+FROM project_engines pe
+JOIN projects p
+  ON p.id = pe.project_id
+JOIN provider_keys pk
+  ON pk.id = pe.provider_key_id
+WHERE pe.project_id = sqlc.arg(project_id)
+  AND p.user_id = sqlc.arg(user_id)
+  AND pk.active = true
+ORDER BY pe.engine_id ASC;
+
 -- name: UpdateProjectEngineForUser :one
 UPDATE project_engines pe
 SET

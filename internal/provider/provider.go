@@ -2,6 +2,8 @@ package provider
 
 import (
 	"context"
+
+	"github.com/Diaku49/AI-visibility-tracker/internal/analyzer"
 )
 
 type EngineID string
@@ -14,6 +16,7 @@ const (
 type Runner interface {
 	ID() EngineID
 	Run(ctx context.Context, apiKey string, baseURL *string, input PromptRunRequest) (*PromptRunResult, error)
+	AnalyzeScan(ctx context.Context, apiKey string, input analyzer.ScanAnalysisInput) (*analyzer.ScanAnalysisResult, error)
 }
 
 type PromptRunRequest struct {

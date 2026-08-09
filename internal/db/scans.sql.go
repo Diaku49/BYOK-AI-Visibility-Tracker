@@ -12,6 +12,33 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const claimScanForAnalysis = `-- name: ClaimScanForAnalysis :one
+UPDATE scans
+SET started_at = now(),
+    status = 'analyzing',
+    analysis_queued_at = NULL
+WHERE scans.id = $1
+  AND status = 'analyzing_pending'
+  AND NOT EXISTS (
+      SELECT 1
+      FROM scan_runs sr
+      WHERE sr.scan_id = scans.id
+        AND sr.status IN ('pending', 'running')
+  )
+RETURNING id
+`
+
+type ClaimScanForAnalysisParams struct {
+	ID uuid.UUID `json:"id"`
+}
+
+func (q *Queries) ClaimScanForAnalysis(ctx context.Context, arg ClaimScanForAnalysisParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, claimScanForAnalysis, arg.ID)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const createScan = `-- name: CreateScan :one
 INSERT INTO scans (
     id,
@@ -19,72 +46,48 @@ INSERT INTO scans (
     status,
     total_runs,
     completed_runs,
-    failed_runs,
-    summary,
-    error,
-    started_at,
-    finished_at
+    failed_runs
 )
-VALUES (
+SELECT
     $1,
+    p.id,
     $2,
     $3,
     $4,
-    $5,
-    $6,
-    $7,
-    $8,
-    $9,
-    $10
-)
-RETURNING id, project_id, status, total_runs, completed_runs, failed_runs, summary, error, created_at, started_at, finished_at
+    $5
+FROM projects p
+WHERE p.id = $6
+  AND p.user_id = $7
+RETURNING id
 `
 
 type CreateScanParams struct {
-	ID            uuid.UUID          `json:"id"`
-	ProjectID     uuid.UUID          `json:"project_id"`
-	Status        string             `json:"status"`
-	TotalRuns     int32              `json:"total_runs"`
-	CompletedRuns int32              `json:"completed_runs"`
-	FailedRuns    int32              `json:"failed_runs"`
-	Summary       []byte             `json:"summary"`
-	Error         *string            `json:"error"`
-	StartedAt     pgtype.Timestamptz `json:"started_at"`
-	FinishedAt    pgtype.Timestamptz `json:"finished_at"`
+	ID            uuid.UUID `json:"id"`
+	Status        string    `json:"status"`
+	TotalRuns     int32     `json:"total_runs"`
+	CompletedRuns int32     `json:"completed_runs"`
+	FailedRuns    int32     `json:"failed_runs"`
+	ProjectID     uuid.UUID `json:"project_id"`
+	UserID        uuid.UUID `json:"user_id"`
 }
 
-func (q *Queries) CreateScan(ctx context.Context, arg CreateScanParams) (Scan, error) {
+func (q *Queries) CreateScan(ctx context.Context, arg CreateScanParams) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, createScan,
 		arg.ID,
-		arg.ProjectID,
 		arg.Status,
 		arg.TotalRuns,
 		arg.CompletedRuns,
 		arg.FailedRuns,
-		arg.Summary,
-		arg.Error,
-		arg.StartedAt,
-		arg.FinishedAt,
+		arg.ProjectID,
+		arg.UserID,
 	)
-	var i Scan
-	err := row.Scan(
-		&i.ID,
-		&i.ProjectID,
-		&i.Status,
-		&i.TotalRuns,
-		&i.CompletedRuns,
-		&i.FailedRuns,
-		&i.Summary,
-		&i.Error,
-		&i.CreatedAt,
-		&i.StartedAt,
-		&i.FinishedAt,
-	)
-	return i, err
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
 }
 
 const getScanByID = `-- name: GetScanByID :one
-SELECT id, project_id, status, total_runs, completed_runs, failed_runs, summary, error, created_at, started_at, finished_at
+SELECT id, project_id, status, total_runs, completed_runs, failed_runs, summary, error, created_at, started_at, finished_at, analysis_queued_at
 FROM scans
 WHERE id = $1
 `
@@ -108,8 +111,113 @@ func (q *Queries) GetScanByID(ctx context.Context, arg GetScanByIDParams) (Scan,
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.AnalysisQueuedAt,
 	)
 	return i, err
+}
+
+const getScansForAnalysis = `-- name: GetScansForAnalysis :many
+WITH ready_scans AS (
+    SELECT s.id, s.project_id
+    FROM scans s
+    WHERE (
+        s.status = 'running'
+        OR (s.status = 'analyzing' AND s.started_at <= now() - interval '15 minutes')
+        OR (
+            s.status = 'analyzing_pending'
+            AND s.analysis_queued_at <= now() - interval '15 minutes'
+        )
+    )
+      AND NOT EXISTS (
+          SELECT 1
+          FROM scan_runs sr
+          WHERE sr.scan_id = s.id
+            AND sr.status IN ('pending', 'running')
+    )
+    ORDER BY s.created_at ASC
+    LIMIT 15
+    FOR UPDATE OF s SKIP LOCKED
+), queued_scans AS (
+    UPDATE scans s
+    SET status = 'analyzing_pending',
+        analysis_queued_at = now()
+    FROM ready_scans rs
+    WHERE s.id = rs.id
+    RETURNING s.id, s.project_id
+)
+SELECT
+    s.id AS scan_id,
+    s.project_id,
+    p.brand_name,
+    p.domain AS brand_domain,
+    sr.id AS scan_run_id,
+    sr.engine_id,
+    sr.prompt_id,
+    sr.provider_key_id,
+    sr.status AS scan_run_status,
+    sr.answer_text,
+    sr.raw_response,
+    pr.text AS prompt_text,
+    pk.encrypted_key,
+    pk.key_nonce
+FROM queued_scans s
+JOIN projects p ON p.id = s.project_id
+JOIN scan_runs sr ON sr.scan_id = s.id
+JOIN prompts pr ON pr.id = sr.prompt_id
+JOIN provider_keys pk ON pk.id = sr.provider_key_id
+ORDER BY s.id, sr.created_at ASC
+`
+
+type GetScansForAnalysisRow struct {
+	ScanID        uuid.UUID `json:"scan_id"`
+	ProjectID     uuid.UUID `json:"project_id"`
+	BrandName     string    `json:"brand_name"`
+	BrandDomain   string    `json:"brand_domain"`
+	ScanRunID     uuid.UUID `json:"scan_run_id"`
+	EngineID      string    `json:"engine_id"`
+	PromptID      uuid.UUID `json:"prompt_id"`
+	ProviderKeyID uuid.UUID `json:"provider_key_id"`
+	ScanRunStatus string    `json:"scan_run_status"`
+	AnswerText    *string   `json:"answer_text"`
+	RawResponse   []byte    `json:"raw_response"`
+	PromptText    string    `json:"prompt_text"`
+	EncryptedKey  []byte    `json:"encrypted_key"`
+	KeyNonce      []byte    `json:"key_nonce"`
+}
+
+func (q *Queries) GetScansForAnalysis(ctx context.Context) ([]GetScansForAnalysisRow, error) {
+	rows, err := q.db.Query(ctx, getScansForAnalysis)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetScansForAnalysisRow
+	for rows.Next() {
+		var i GetScansForAnalysisRow
+		if err := rows.Scan(
+			&i.ScanID,
+			&i.ProjectID,
+			&i.BrandName,
+			&i.BrandDomain,
+			&i.ScanRunID,
+			&i.EngineID,
+			&i.PromptID,
+			&i.ProviderKeyID,
+			&i.ScanRunStatus,
+			&i.AnswerText,
+			&i.RawResponse,
+			&i.PromptText,
+			&i.EncryptedKey,
+			&i.KeyNonce,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const incrementScanCompletedRuns = `-- name: IncrementScanCompletedRuns :exec
@@ -155,7 +263,7 @@ SET
     started_at = $8,
     finished_at = $9
 WHERE id = $10
-RETURNING id, project_id, status, total_runs, completed_runs, failed_runs, summary, error, created_at, started_at, finished_at
+RETURNING id, project_id, status, total_runs, completed_runs, failed_runs, summary, error, created_at, started_at, finished_at, analysis_queued_at
 `
 
 type UpdateScanParams struct {
@@ -197,6 +305,42 @@ func (q *Queries) UpdateScan(ctx context.Context, arg UpdateScanParams) (Scan, e
 		&i.CreatedAt,
 		&i.StartedAt,
 		&i.FinishedAt,
+		&i.AnalysisQueuedAt,
+	)
+	return i, err
+}
+
+const updateScanStateByID = `-- name: UpdateScanStateByID :one
+UPDATE scans
+SET status = $1,
+    error = $2,
+    finished_at = COALESCE(now(), finished_at)
+WHERE id = $3
+RETURNING id, project_id, status, total_runs, completed_runs, failed_runs, summary, error, created_at, started_at, finished_at, analysis_queued_at
+`
+
+type UpdateScanStateByIDParams struct {
+	Status string    `json:"status"`
+	Error  *string   `json:"error"`
+	ID     uuid.UUID `json:"id"`
+}
+
+func (q *Queries) UpdateScanStateByID(ctx context.Context, arg UpdateScanStateByIDParams) (Scan, error) {
+	row := q.db.QueryRow(ctx, updateScanStateByID, arg.Status, arg.Error, arg.ID)
+	var i Scan
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Status,
+		&i.TotalRuns,
+		&i.CompletedRuns,
+		&i.FailedRuns,
+		&i.Summary,
+		&i.Error,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+		&i.AnalysisQueuedAt,
 	)
 	return i, err
 }

@@ -12,6 +12,240 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const claimScanRun = `-- name: ClaimScanRun :one
+UPDATE scan_runs
+SET
+    status = 'running',
+    started_at = now()
+WHERE id = $1
+  AND scan_id = $2
+  AND (
+      status = 'pending'
+      OR (status = 'running' AND started_at <= now() - interval '15 minutes')
+  )
+RETURNING id, scan_id, engine_id, prompt_id, provider_key_id, try_number, status, answer_text, raw_response, brand_mentioned, brand_domain_cited, competitors_mentioned, cited_domains, error, created_at, started_at, finished_at
+`
+
+type ClaimScanRunParams struct {
+	ID     uuid.UUID `json:"id"`
+	ScanID uuid.UUID `json:"scan_id"`
+}
+
+func (q *Queries) ClaimScanRun(ctx context.Context, arg ClaimScanRunParams) (ScanRun, error) {
+	row := q.db.QueryRow(ctx, claimScanRun, arg.ID, arg.ScanID)
+	var i ScanRun
+	err := row.Scan(
+		&i.ID,
+		&i.ScanID,
+		&i.EngineID,
+		&i.PromptID,
+		&i.ProviderKeyID,
+		&i.TryNumber,
+		&i.Status,
+		&i.AnswerText,
+		&i.RawResponse,
+		&i.BrandMentioned,
+		&i.BrandDomainCited,
+		&i.CompetitorsMentioned,
+		&i.CitedDomains,
+		&i.Error,
+		&i.CreatedAt,
+		&i.StartedAt,
+		&i.FinishedAt,
+	)
+	return i, err
+}
+
+const claimScansForWorkers = `-- name: ClaimScansForWorkers :many
+WITH eligible_scans AS (
+    SELECT s.id
+    FROM scans s
+    WHERE (
+        s.status = 'pending'
+        OR (s.status = 'running' AND s.started_at <= now() - interval '15 minutes')
+    )
+      AND EXISTS (
+          SELECT 1
+          FROM scan_runs sr
+          WHERE sr.scan_id = s.id
+            AND (
+                sr.status = 'pending'
+                OR (sr.status = 'running' AND sr.started_at <= now() - interval '15 minutes')
+            )
+      )
+    ORDER BY s.created_at ASC
+    FOR UPDATE OF s SKIP LOCKED
+)
+UPDATE scans s
+SET status = 'running',
+    started_at = now()
+FROM eligible_scans es
+WHERE s.id = es.id
+RETURNING s.id
+`
+
+func (q *Queries) ClaimScansForWorkers(ctx context.Context) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, claimScansForWorkers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const createScanRuns = `-- name: CreateScanRuns :execrows
+INSERT INTO scan_runs (
+    id,
+    scan_id,
+    engine_id,
+    prompt_id,
+    provider_key_id
+)
+SELECT
+    unnest($1::uuid[]),
+    $2,
+    unnest($3::text[]),
+    unnest($4::uuid[]),
+    unnest($5::uuid[])
+`
+
+type CreateScanRunsParams struct {
+	Ids            []uuid.UUID `json:"ids"`
+	ScanID         uuid.UUID   `json:"scan_id"`
+	EngineIds      []string    `json:"engine_ids"`
+	PromptIds      []uuid.UUID `json:"prompt_ids"`
+	ProviderKeyIds []uuid.UUID `json:"provider_key_ids"`
+}
+
+func (q *Queries) CreateScanRuns(ctx context.Context, arg CreateScanRunsParams) (int64, error) {
+	result, err := q.db.Exec(ctx, createScanRuns,
+		arg.Ids,
+		arg.ScanID,
+		arg.EngineIds,
+		arg.PromptIds,
+		arg.ProviderKeyIds,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const getEligibleScanRunsForWorkers = `-- name: GetEligibleScanRunsForWorkers :many
+SELECT
+    p.brand_name AS brand_name,
+    p.domain AS brand_domain,
+    s.id AS scan_id,
+    sr.id AS scan_run_id,
+    sr.engine_id,
+    sr.prompt_id,
+    sr.provider_key_id,
+    sr.try_number,
+    sr.status AS scan_run_status,
+    s.status AS scan_status,
+    p.language,
+    p.region,
+    pr.text AS prompt_text,
+    pr.active AS prompt_active,
+    pk.encrypted_key,
+    pk.key_nonce,
+    pk.active AS provider_key_active,
+    pk.monthly_run_limit,
+    pk.monthly_runs_used
+FROM scan_runs sr
+JOIN scans s
+    ON s.id = sr.scan_id
+JOIN projects p
+    ON p.id = s.project_id
+JOIN prompts pr
+    ON pr.id = sr.prompt_id
+JOIN provider_keys pk
+    ON pk.id = sr.provider_key_id
+WHERE sr.scan_id = ANY($1::uuid[])
+  AND (
+      sr.status = 'pending'
+      OR (sr.status = 'running' AND sr.started_at <= now() - interval '15 minutes')
+  )
+ORDER BY sr.created_at ASC
+`
+
+type GetEligibleScanRunsForWorkersParams struct {
+	ScanIds []uuid.UUID `json:"scan_ids"`
+}
+
+type GetEligibleScanRunsForWorkersRow struct {
+	BrandName         string    `json:"brand_name"`
+	BrandDomain       string    `json:"brand_domain"`
+	ScanID            uuid.UUID `json:"scan_id"`
+	ScanRunID         uuid.UUID `json:"scan_run_id"`
+	EngineID          string    `json:"engine_id"`
+	PromptID          uuid.UUID `json:"prompt_id"`
+	ProviderKeyID     uuid.UUID `json:"provider_key_id"`
+	TryNumber         int32     `json:"try_number"`
+	ScanRunStatus     string    `json:"scan_run_status"`
+	ScanStatus        string    `json:"scan_status"`
+	Language          string    `json:"language"`
+	Region            string    `json:"region"`
+	PromptText        string    `json:"prompt_text"`
+	PromptActive      bool      `json:"prompt_active"`
+	EncryptedKey      []byte    `json:"encrypted_key"`
+	KeyNonce          []byte    `json:"key_nonce"`
+	ProviderKeyActive bool      `json:"provider_key_active"`
+	MonthlyRunLimit   *int32    `json:"monthly_run_limit"`
+	MonthlyRunsUsed   int32     `json:"monthly_runs_used"`
+}
+
+func (q *Queries) GetEligibleScanRunsForWorkers(ctx context.Context, arg GetEligibleScanRunsForWorkersParams) ([]GetEligibleScanRunsForWorkersRow, error) {
+	rows, err := q.db.Query(ctx, getEligibleScanRunsForWorkers, arg.ScanIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetEligibleScanRunsForWorkersRow
+	for rows.Next() {
+		var i GetEligibleScanRunsForWorkersRow
+		if err := rows.Scan(
+			&i.BrandName,
+			&i.BrandDomain,
+			&i.ScanID,
+			&i.ScanRunID,
+			&i.EngineID,
+			&i.PromptID,
+			&i.ProviderKeyID,
+			&i.TryNumber,
+			&i.ScanRunStatus,
+			&i.ScanStatus,
+			&i.Language,
+			&i.Region,
+			&i.PromptText,
+			&i.PromptActive,
+			&i.EncryptedKey,
+			&i.KeyNonce,
+			&i.ProviderKeyActive,
+			&i.MonthlyRunLimit,
+			&i.MonthlyRunsUsed,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const getScanRunByID = `-- name: GetScanRunByID :one
 SELECT id, scan_id, engine_id, prompt_id, provider_key_id, try_number, status, answer_text, raw_response, brand_mentioned, brand_domain_cited, competitors_mentioned, cited_domains, error, created_at, started_at, finished_at
 FROM scan_runs
@@ -45,210 +279,6 @@ func (q *Queries) GetScanRunByID(ctx context.Context, arg GetScanRunByIDParams) 
 		&i.FinishedAt,
 	)
 	return i, err
-}
-
-const getScansForAnalysis = `-- name: GetScansForAnalysis :many
-WITH ready_scans AS (
-    SELECT s.id
-    FROM scans s
-    WHERE s.status = 'running'
-      AND NOT EXISTS (
-          SELECT 1 FROM scan_runs sr
-          WHERE sr.scan_id = s.id
-            AND sr.status NOT IN ('completed', 'failed')
-      )
-    FOR UPDATE OF s SKIP LOCKED
-), claimed AS (
-    UPDATE scans s
-    SET status = 'analyzing'
-    FROM ready_scans rs
-    WHERE s.id = rs.id
-    RETURNING s.id, s.project_id
-)
-SELECT
-    c.id AS scan_id,
-    c.project_id,
-    p.brand_name,
-    p.domain AS brand_domain,
-    sr.id AS scan_run_id,
-    sr.engine_id,
-    sr.prompt_id,
-    sr.provider_key_id,
-    sr.status AS scan_run_status,
-    sr.answer_text,
-    sr.raw_response,
-    pr.text AS prompt_text,
-    pk.encrypted_key,
-    pk.key_nonce
-FROM claimed c
-JOIN projects p ON p.id = c.project_id
-JOIN scan_runs sr ON sr.scan_id = c.id
-JOIN prompts pr ON pr.id = sr.prompt_id
-JOIN provider_keys pk ON pk.id = sr.provider_key_id
-ORDER BY c.id, sr.created_at ASC
-`
-
-type GetScansForAnalysisRow struct {
-	ScanID        uuid.UUID `json:"scan_id"`
-	ProjectID     uuid.UUID `json:"project_id"`
-	BrandName     string    `json:"brand_name"`
-	BrandDomain   string    `json:"brand_domain"`
-	ScanRunID     uuid.UUID `json:"scan_run_id"`
-	EngineID      string    `json:"engine_id"`
-	PromptID      uuid.UUID `json:"prompt_id"`
-	ProviderKeyID uuid.UUID `json:"provider_key_id"`
-	ScanRunStatus string    `json:"scan_run_status"`
-	AnswerText    *string   `json:"answer_text"`
-	RawResponse   []byte    `json:"raw_response"`
-	PromptText    string    `json:"prompt_text"`
-	EncryptedKey  []byte    `json:"encrypted_key"`
-	KeyNonce      []byte    `json:"key_nonce"`
-}
-
-func (q *Queries) GetScansForAnalysis(ctx context.Context) ([]GetScansForAnalysisRow, error) {
-	rows, err := q.db.Query(ctx, getScansForAnalysis)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetScansForAnalysisRow
-	for rows.Next() {
-		var i GetScansForAnalysisRow
-		if err := rows.Scan(
-			&i.ScanID,
-			&i.ProjectID,
-			&i.BrandName,
-			&i.BrandDomain,
-			&i.ScanRunID,
-			&i.EngineID,
-			&i.PromptID,
-			&i.ProviderKeyID,
-			&i.ScanRunStatus,
-			&i.AnswerText,
-			&i.RawResponse,
-			&i.PromptText,
-			&i.EncryptedKey,
-			&i.KeyNonce,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const getScansForWorkers = `-- name: GetScansForWorkers :many
-WITH claimed AS (
-    SELECT s.id
-    FROM scans s
-    WHERE s.status = 'pending'
-       OR (s.status = 'running' AND s.started_at <= now() - interval '15 minutes')
-    ORDER BY s.created_at ASC
-    FOR UPDATE OF s SKIP LOCKED
-), updated AS (
-    UPDATE scans s
-    SET status = 'running',
-        started_at = now()
-    FROM claimed c
-    WHERE s.id = c.id
-    RETURNING s.id, s.project_id, s.status
-)
-SELECT
-    p.brand_name AS brand_name,
-    p.domain AS brand_domain,
-    s.id AS scan_id,
-    sr.id AS scan_run_id,
-    sr.engine_id,
-    sr.prompt_id,
-    sr.provider_key_id,
-    sr.try_number,
-    sr.status AS scan_run_status,
-    s.status AS scan_status,
-    p.language,
-    p.region,
-    pr.text AS prompt_text,
-    pr.active AS prompt_active,
-    pk.encrypted_key,
-    pk.key_nonce,
-    pk.active AS provider_key_active,
-    pk.monthly_run_limit,
-    pk.monthly_runs_used
-FROM updated s
-JOIN projects p
-    ON p.id = s.project_id
-JOIN scan_runs sr
-    ON sr.scan_id = s.id
-    AND sr.status IN ('pending', 'running')
-JOIN prompts pr
-    ON pr.id = sr.prompt_id
-JOIN provider_keys pk
-    ON pk.id = sr.provider_key_id
-ORDER BY sr.created_at ASC
-`
-
-type GetScansForWorkersRow struct {
-	BrandName         string    `json:"brand_name"`
-	BrandDomain       string    `json:"brand_domain"`
-	ScanID            uuid.UUID `json:"scan_id"`
-	ScanRunID         uuid.UUID `json:"scan_run_id"`
-	EngineID          string    `json:"engine_id"`
-	PromptID          uuid.UUID `json:"prompt_id"`
-	ProviderKeyID     uuid.UUID `json:"provider_key_id"`
-	TryNumber         int32     `json:"try_number"`
-	ScanRunStatus     string    `json:"scan_run_status"`
-	ScanStatus        string    `json:"scan_status"`
-	Language          string    `json:"language"`
-	Region            string    `json:"region"`
-	PromptText        string    `json:"prompt_text"`
-	PromptActive      bool      `json:"prompt_active"`
-	EncryptedKey      []byte    `json:"encrypted_key"`
-	KeyNonce          []byte    `json:"key_nonce"`
-	ProviderKeyActive bool      `json:"provider_key_active"`
-	MonthlyRunLimit   *int32    `json:"monthly_run_limit"`
-	MonthlyRunsUsed   int32     `json:"monthly_runs_used"`
-}
-
-func (q *Queries) GetScansForWorkers(ctx context.Context) ([]GetScansForWorkersRow, error) {
-	rows, err := q.db.Query(ctx, getScansForWorkers)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []GetScansForWorkersRow
-	for rows.Next() {
-		var i GetScansForWorkersRow
-		if err := rows.Scan(
-			&i.BrandName,
-			&i.BrandDomain,
-			&i.ScanID,
-			&i.ScanRunID,
-			&i.EngineID,
-			&i.PromptID,
-			&i.ProviderKeyID,
-			&i.TryNumber,
-			&i.ScanRunStatus,
-			&i.ScanStatus,
-			&i.Language,
-			&i.Region,
-			&i.PromptText,
-			&i.PromptActive,
-			&i.EncryptedKey,
-			&i.KeyNonce,
-			&i.ProviderKeyActive,
-			&i.MonthlyRunLimit,
-			&i.MonthlyRunsUsed,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
 }
 
 const updateScanRun = `-- name: UpdateScanRun :one
@@ -344,6 +374,7 @@ SET
     competitors_mentioned = $3,
     cited_domains = $4
 WHERE id = $5
+  AND scan_id = $6
 `
 
 type UpdateScanRunAnalysisParams struct {
@@ -352,6 +383,7 @@ type UpdateScanRunAnalysisParams struct {
 	CompetitorsMentioned []byte    `json:"competitors_mentioned"`
 	CitedDomains         []byte    `json:"cited_domains"`
 	ID                   uuid.UUID `json:"id"`
+	ScanID               uuid.UUID `json:"scan_id"`
 }
 
 func (q *Queries) UpdateScanRunAnalysis(ctx context.Context, arg UpdateScanRunAnalysisParams) error {
@@ -361,6 +393,7 @@ func (q *Queries) UpdateScanRunAnalysis(ctx context.Context, arg UpdateScanRunAn
 		arg.CompetitorsMentioned,
 		arg.CitedDomains,
 		arg.ID,
+		arg.ScanID,
 	)
 	return err
 }

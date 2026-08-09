@@ -11,12 +11,12 @@ import (
 )
 
 type Server struct {
-	store store.Store
+	store *store.Store
 	cfg   *config.Config
 	kc    *pkg.KeyCipher
 }
 
-func NewServer(store store.Store, config *config.Config) *Server {
+func NewServer(store *store.Store, config *config.Config) *Server {
 	return &Server{
 		store: store,
 		cfg:   config,
