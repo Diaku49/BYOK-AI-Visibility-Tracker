@@ -1,50 +1,63 @@
 # BYOK AI Visibility Tracker
 
-API-first Go prototype for tracking how visible a brand is in AI-generated answers.
+An API-first Go prototype for measuring how visible a brand is in AI-generated answers.
 
-Customers provide their brand name, competitors, prompts, and their own provider API keys. The system runs those prompts through AI/search providers such as OpenAI, Gemini, Grok, or Perplexity, then stores and compares the results over time.
+Customers configure a project with their brand, domain, competitors, prompts, and their own AI-provider keys. The service runs the prompts through supported providers, analyzes each answer, and stores visibility results for comparison over time.
 
-The goal is not to wrap chat APIs. The value is in measuring brand visibility across answer engines:
+This is not a chat wrapper. Its purpose is to answer questions such as:
 
-- whether the customer's brand appears in responses
-- whether competitors appear in responses
-- which domains are cited
-- how visibility changes across prompts, providers, and time
+- Was the brand mentioned in an AI answer?
+- Which configured competitors were mentioned?
+- Was the brand domain cited?
+- How does visibility differ across prompts and providers?
 
-## Current Scope
+## Current Prototype
 
-This repo is currently focused on the backend foundations:
+The current implementation supports Gemini and OpenAI providers, PostgreSQL storage, and a background worker pipeline.
 
-- Go API structure
-- PostgreSQL schema and migrations
-- sqlc-generated database access
-- store-layer methods around generated queries
-- user, project, prompt, competitor, provider key, and project engine data models
+```text
+Create scan
+  -> create pending scan runs
+  -> worker claims and executes each provider call
+  -> store completed or failed run results
+  -> queue scan analysis
+  -> analysis worker claims, analyzes, and saves the final scan summary
+```
 
-A dashboard may be added later, but the first version is intended to be API-first.
+Provider keys are supplied by customers and encrypted before storage. Workers use database-backed status transitions so pending work can be recovered after an interrupted process.
+
+## Prototype Boundaries
+
+This repository is intentionally early-stage. It currently focuses on backend and worker foundations rather than a complete product experience.
+
+- API endpoints and result retrieval are still being built out.
+- A dashboard and reporting UI are not included.
+- Provider quotas, retries for analysis, and richer reporting are future work.
+- The worker flow is under active development; production hardening and test coverage are still needed.
 
 ## Project Layout
 
-- `cmd/api` - API entrypoint
-- `config` - application configuration
+- `cmd/api` - application entrypoint
+- `config` - environment-backed configuration
 - `db/migrations` - PostgreSQL migrations
 - `db/queries` - sqlc query definitions
-- `internal/db` - sqlc-generated Go code
-- `internal/store` - hand-written store layer around generated queries
-- `internal/api` - HTTP API handlers, middleware, and server setup
-- `internal/provider` - provider integration boundary
-- `internal/parser` - answer parsing boundary
-- `internal/worker` - background processing boundary
+- `internal/db` - generated sqlc code
+- `internal/store` - database operations and transactions
+- `internal/api` - HTTP server, handlers, and authentication
+- `internal/provider` - Gemini and OpenAI provider implementations
+- `internal/analyzer` - structured visibility-analysis contracts
+- `internal/worker` - scan execution and analysis workers
+- `scripts` - manual provider and analysis test scripts
 
 ## Development
 
-Generated database code is managed by sqlc:
+Generate database code after changing a migration or query:
 
 ```sh
 sqlc generate
 ```
 
-Common checks:
+Run the available checks:
 
 ```sh
 go test ./...
