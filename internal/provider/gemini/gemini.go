@@ -34,7 +34,7 @@ func (gp *GeminiProvider) newClient(ctx context.Context, apiKey string) (*genai.
 		HTTPClient: gp.httpClient,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create Gemini client: %w", err)
 	}
 
 	return cli, nil
@@ -68,7 +68,7 @@ func (gp *GeminiProvider) generate(ctx context.Context, cli *genai.Client, model
 		config,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generate Gemini content: %w", err)
 	}
 
 	return result, nil
@@ -119,7 +119,7 @@ func (gp *GeminiProvider) AnalyzeScan(
 
 	prompt, err := analyzer.BuildAnalyzerPrompt(input)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build Gemini analysis prompt: %w", err)
 	}
 
 	temp := float32(0.1)
@@ -142,7 +142,7 @@ func (gp *GeminiProvider) AnalyzeScan(
 		config,
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generate Gemini scan analysis: %w", err)
 	}
 
 	text := resp.Text()

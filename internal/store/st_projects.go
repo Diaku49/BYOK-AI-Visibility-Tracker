@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/Diaku49/AI-visibility-tracker/internal/db"
 	"github.com/Diaku49/AI-visibility-tracker/internal/dto"
@@ -19,7 +20,7 @@ func (s *Store) CreateProject(
 ) (uuid.UUID, error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{})
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, fmt.Errorf("begin create project transaction: %w", err)
 	}
 	defer tx.Rollback(ctx)
 
@@ -36,14 +37,14 @@ func (s *Store) CreateProject(
 		Region:    project.Region,
 	})
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, fmt.Errorf("create project: %w", err)
 	}
 
 	// check Engine IDs and ProviderKeys if this key belongs to this engineID and userID
 	for _, provider := range project.Providers {
 		providerKeyID, err := uuid.Parse(provider.ProviderKeyID)
 		if err != nil {
-			return uuid.Nil, err
+			return uuid.Nil, fmt.Errorf("parse provider key ID: %w", err)
 		}
 
 		if _, err := query.GetProviderKeyByIDForUserAndEngine(ctx, db.GetProviderKeyByIDForUserAndEngineParams{
@@ -54,7 +55,7 @@ func (s *Store) CreateProject(
 			if IsNotFound(err) {
 				return uuid.Nil, ErrProviderKeyNotFound
 			}
-			return uuid.Nil, err
+			return uuid.Nil, fmt.Errorf("get provider key for project engine: %w", err)
 		}
 
 		if _, err := query.CreateProjectEngineForUser(ctx, db.CreateProjectEngineForUserParams{
@@ -63,7 +64,7 @@ func (s *Store) CreateProject(
 			ProviderKeyID: providerKeyID,
 			UserID:        userID,
 		}); err != nil {
-			return uuid.Nil, err
+			return uuid.Nil, fmt.Errorf("create project engine: %w", err)
 		}
 	}
 
@@ -76,12 +77,12 @@ func (s *Store) CreateProject(
 			Active:    true,
 			UserID:    userID,
 		}); err != nil {
-			return uuid.Nil, err
+			return uuid.Nil, fmt.Errorf("create project prompt: %w", err)
 		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, fmt.Errorf("commit create project transaction: %w", err)
 	}
 
 	return projectID, nil
@@ -93,7 +94,7 @@ func (s *Store) GetProjectByID(ctx context.Context, projectID uuid.UUID) (db.Pro
 		if IsNotFound(err) {
 			return db.Project{}, ErrProjectNotFound
 		}
-		return db.Project{}, err
+		return db.Project{}, fmt.Errorf("get project by ID: %w", err)
 	}
 
 	return project, nil
@@ -108,14 +109,19 @@ func (s *Store) GetProjectByIDForUser(ctx context.Context, projectID, userID uui
 		if IsNotFound(err) {
 			return db.Project{}, ErrProjectNotFound
 		}
-		return db.Project{}, err
+		return db.Project{}, fmt.Errorf("get project by ID for user: %w", err)
 	}
 
 	return project, nil
 }
 
 func (s *Store) ListProjectsByUserID(ctx context.Context, userID uuid.UUID) ([]db.Project, error) {
-	return s.query.ListProjectsByUserID(ctx, db.ListProjectsByUserIDParams{UserID: userID})
+	projects, err := s.query.ListProjectsByUserID(ctx, db.ListProjectsByUserIDParams{UserID: userID})
+	if err != nil {
+		return nil, fmt.Errorf("list projects for user: %w", err)
+	}
+
+	return projects, nil
 }
 
 func (s *Store) UpdateProject(
@@ -134,7 +140,7 @@ func (s *Store) UpdateProject(
 		if IsNotFound(err) {
 			return db.Project{}, ErrProjectNotFound
 		}
-		return db.Project{}, err
+		return db.Project{}, fmt.Errorf("update project: %w", err)
 	}
 
 	return project, nil
@@ -157,7 +163,7 @@ func (s *Store) UpdateProjectForUser(
 		if IsNotFound(err) {
 			return db.Project{}, ErrProjectNotFound
 		}
-		return db.Project{}, err
+		return db.Project{}, fmt.Errorf("update project for user: %w", err)
 	}
 
 	return project, nil

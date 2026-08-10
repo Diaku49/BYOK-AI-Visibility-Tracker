@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/Diaku49/AI-visibility-tracker/internal/db"
 	"github.com/google/uuid"
@@ -32,7 +33,7 @@ func (s *Store) CreateProjectEngineForUser(
 		if IsNotFound(err) {
 			return db.ProjectEngine{}, ErrProjectEngineNotFound
 		}
-		return db.ProjectEngine{}, err
+		return db.ProjectEngine{}, fmt.Errorf("create project engine: %w", err)
 	}
 
 	return projectEngine, nil
@@ -54,7 +55,7 @@ func (s *Store) UpdateProjectEngineForUser(
 		if IsNotFound(err) {
 			return db.ProjectEngine{}, ErrProjectEngineNotFound
 		}
-		return db.ProjectEngine{}, err
+		return db.ProjectEngine{}, fmt.Errorf("update project engine: %w", err)
 	}
 
 	return projectEngine, nil
@@ -66,9 +67,13 @@ func (s *Store) DeleteProjectEngineForUser(
 	engineID string,
 	userID uuid.UUID,
 ) error {
-	return s.query.DeleteProjectEngineForUser(ctx, db.DeleteProjectEngineForUserParams{
+	if err := s.query.DeleteProjectEngineForUser(ctx, db.DeleteProjectEngineForUserParams{
 		ProjectID: projectID,
 		EngineID:  engineID,
 		UserID:    userID,
-	})
+	}); err != nil {
+		return fmt.Errorf("delete project engine: %w", err)
+	}
+
+	return nil
 }

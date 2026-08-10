@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"log/slog"
 	"net/http"
 	"reflect"
@@ -74,19 +73,20 @@ func decodeAndValidateJSON(r *http.Request, v any, validate *validator.Validate)
 	return nil
 }
 
-func HTTPResponse(w http.ResponseWriter, statusCode int, msg string, data any) {
+func HTTPResponse(w http.ResponseWriter, statusCode int, msg string, data any) error {
 	w.Header().Set("Content-Type", "application/json")
-
 	w.WriteHeader(statusCode)
 	if err := json.NewEncoder(w).Encode(Response{
 		Message: msg,
 		Data:    data,
 	}); err != nil {
-		log.Printf("failed to write JSON response: %v", err)
+		return fmt.Errorf("encode HTTP response: %w", err)
 	}
+
+	return nil
 }
 
-func HTTPError(w http.ResponseWriter, statusCode int, errMsg string, data any) {
+func HTTPError(w http.ResponseWriter, statusCode int, errMsg string, data any) error {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 
@@ -94,8 +94,10 @@ func HTTPError(w http.ResponseWriter, statusCode int, errMsg string, data any) {
 		Message: errMsg,
 		Data:    data,
 	}); err != nil {
-		log.Printf("failed to write error JSON: %v", err)
+		return fmt.Errorf("encode HTTP error response: %w", err)
 	}
+
+	return nil
 }
 
 func (h *ServerHandler) GetLogger(r *http.Request) *slog.Logger {

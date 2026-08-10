@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/Diaku49/AI-visibility-tracker/internal/db"
 	"github.com/google/uuid"
@@ -36,7 +37,7 @@ func (s *Store) CreateCompetitorForUser(
 		if IsNotFound(err) {
 			return uuid.Nil, ErrProjectNotFound
 		}
-		return uuid.Nil, err
+		return uuid.Nil, fmt.Errorf("create competitor: %w", err)
 	}
 
 	return competitor.ID, nil
@@ -46,16 +47,26 @@ func (s *Store) ListCompetitorsByProjectForUser(
 	ctx context.Context,
 	projectID, userID uuid.UUID,
 ) ([]db.Competitor, error) {
-	return s.query.ListCompetitorsByProjectForUser(ctx, db.ListCompetitorsByProjectForUserParams{
+	competitors, err := s.query.ListCompetitorsByProjectForUser(ctx, db.ListCompetitorsByProjectForUserParams{
 		ProjectID: projectID,
 		UserID:    userID,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("list competitors for project and user: %w", err)
+	}
+
+	return competitors, nil
 }
 
 func (s *Store) ListCompetitorsByProject(ctx context.Context, projectID uuid.UUID) ([]db.Competitor, error) {
-	return s.query.ListCompetitorsByProject(ctx, db.ListCompetitorsByProjectParams{
+	competitors, err := s.query.ListCompetitorsByProject(ctx, db.ListCompetitorsByProjectParams{
 		ProjectID: projectID,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("list competitors for project: %w", err)
+	}
+
+	return competitors, nil
 }
 
 func (s *Store) DeleteCompetitorForUser(ctx context.Context, competitorID, userID uuid.UUID) error {
@@ -64,7 +75,7 @@ func (s *Store) DeleteCompetitorForUser(ctx context.Context, competitorID, userI
 		UserID: userID,
 	})
 	if err != nil {
-		return err
+		return fmt.Errorf("delete competitor: %w", err)
 	}
 	if rowsAffected == 0 {
 		return ErrCompetitorNotFound

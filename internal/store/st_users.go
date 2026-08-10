@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/Diaku49/AI-visibility-tracker/internal/db"
 	"github.com/Diaku49/AI-visibility-tracker/internal/pkg"
@@ -20,7 +21,7 @@ func (s *Store) CreateUser(ctx context.Context, email, password, name string) (u
 	userID := uuid.New()
 	hashPassword, err := pkg.HashPassword(password)
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, fmt.Errorf("hash user password: %w", err)
 	}
 
 	user, err := s.query.CreateUser(ctx, db.CreateUserParams{
@@ -33,7 +34,7 @@ func (s *Store) CreateUser(ctx context.Context, email, password, name string) (u
 		if IsUniqueViolation(err) {
 			return uuid.Nil, ErrEmailAlreadyExists
 		}
-		return uuid.Nil, err
+		return uuid.Nil, fmt.Errorf("create user: %w", err)
 	}
 
 	return user.ID, nil
@@ -45,7 +46,7 @@ func (s *Store) GetUserByEmail(ctx context.Context, email string) (uuid.UUID, st
 		if IsNotFound(err) {
 			return uuid.Nil, "", "", ErrEmailNotFound
 		}
-		return uuid.Nil, "", "", err
+		return uuid.Nil, "", "", fmt.Errorf("get user by email: %w", err)
 	}
 	if user.Password == nil {
 		return uuid.Nil, "", "", ErrPasswordNotSet

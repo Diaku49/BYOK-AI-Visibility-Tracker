@@ -41,9 +41,8 @@ type ScanRunTask struct {
 }
 
 type ScanRunResult struct {
-	scanRunID uuid.UUID
-	result    provider.PromptRunResult
-	error     string
+	warnings []error
+	err      error
 }
 
 type AnalysisTask struct {
@@ -90,10 +89,10 @@ func (wc *WorkerCoordinator) Start() {
 	wc.StartAnalysisWorker(AnalysisJobs)
 }
 
-func (wc *WorkerCoordinator) GetWork(ctx context.Context) error {
+func (wc *WorkerCoordinator) GetWork(ctx context.Context) (int, error) {
 	rows, err := wc.st.GetScansForWorkers(ctx)
 	if err != nil {
-		return fmt.Errorf("get scans for workers: %w", err)
+		return 0, fmt.Errorf("get scans for workers: %w", err)
 	}
 
 	for _, row := range rows {
@@ -118,9 +117,5 @@ func (wc *WorkerCoordinator) GetWork(ctx context.Context) error {
 		ScanRunJobs <- task
 	}
 
-	if len(rows) > 0 {
-		wc.l.Info("dispatched scan run tasks", "count", len(rows))
-	}
-
-	return nil
+	return len(rows), nil
 }

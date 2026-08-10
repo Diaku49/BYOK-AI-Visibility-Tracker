@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/Diaku49/AI-visibility-tracker/internal/db"
 	"github.com/jackc/pgx/v5"
@@ -20,12 +21,12 @@ type Store struct {
 func Connect(ctx context.Context, dbURL string) (*Store, error) {
 	pool, err := pgxpool.New(ctx, dbURL)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create database pool: %w", err)
 	}
 
 	if err := pool.Ping(ctx); err != nil {
 		pool.Close()
-		return nil, err
+		return nil, fmt.Errorf("ping database: %w", err)
 	}
 
 	return &Store{

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/Diaku49/AI-visibility-tracker/internal/db"
 	"github.com/google/uuid"
@@ -37,7 +38,7 @@ func (s *Store) CreateProviderKey(
 		if IsUniqueViolation(err) {
 			return uuid.Nil, ErrProviderKeyAlreadyExists
 		}
-		return uuid.Nil, err
+		return uuid.Nil, fmt.Errorf("create provider key: %w", err)
 	}
 
 	return providerKey.ID, nil
@@ -49,7 +50,7 @@ func (s *Store) GetProviderKeyByID(ctx context.Context, providerKeyID uuid.UUID)
 		if IsNotFound(err) {
 			return db.ProviderKey{}, ErrProviderKeyNotFound
 		}
-		return db.ProviderKey{}, err
+		return db.ProviderKey{}, fmt.Errorf("get provider key: %w", err)
 	}
 
 	return providerKey, nil
@@ -67,14 +68,19 @@ func (s *Store) GetProviderKeyByIDForUser(
 		if IsNotFound(err) {
 			return db.ProviderKey{}, ErrProviderKeyNotFound
 		}
-		return db.ProviderKey{}, err
+		return db.ProviderKey{}, fmt.Errorf("get provider key for user: %w", err)
 	}
 
 	return providerKey, nil
 }
 
 func (s *Store) ListProviderKeysByUserID(ctx context.Context, userID uuid.UUID) ([]db.ProviderKey, error) {
-	return s.query.ListProviderKeysByUserID(ctx, db.ListProviderKeysByUserIDParams{UserID: userID})
+	providerKeys, err := s.query.ListProviderKeysByUserID(ctx, db.ListProviderKeysByUserIDParams{UserID: userID})
+	if err != nil {
+		return nil, fmt.Errorf("list provider keys for user: %w", err)
+	}
+
+	return providerKeys, nil
 }
 
 func (s *Store) ListProviderKeysByUserIDAndEngine(
@@ -82,10 +88,15 @@ func (s *Store) ListProviderKeysByUserIDAndEngine(
 	userID uuid.UUID,
 	engineID string,
 ) ([]db.ProviderKey, error) {
-	return s.query.ListProviderKeysByUserIDAndEngine(ctx, db.ListProviderKeysByUserIDAndEngineParams{
+	providerKeys, err := s.query.ListProviderKeysByUserIDAndEngine(ctx, db.ListProviderKeysByUserIDAndEngineParams{
 		UserID:   userID,
 		EngineID: engineID,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("list provider keys for user and engine: %w", err)
+	}
+
+	return providerKeys, nil
 }
 
 func (s *Store) UpdateProviderKeyMetadataForUser(
@@ -106,7 +117,7 @@ func (s *Store) UpdateProviderKeyMetadataForUser(
 		if IsNotFound(err) {
 			return db.ProviderKey{}, ErrProviderKeyNotFound
 		}
-		return db.ProviderKey{}, err
+		return db.ProviderKey{}, fmt.Errorf("update provider key metadata: %w", err)
 	}
 
 	return providerKey, nil
@@ -117,8 +128,12 @@ func (s *Store) DeleteProviderKeyForUser(
 	providerKeyID uuid.UUID,
 	userID uuid.UUID,
 ) error {
-	return s.query.DeleteProviderKeyForUser(ctx, db.DeleteProviderKeyForUserParams{
+	if err := s.query.DeleteProviderKeyForUser(ctx, db.DeleteProviderKeyForUserParams{
 		ID:     providerKeyID,
 		UserID: userID,
-	})
+	}); err != nil {
+		return fmt.Errorf("delete provider key for user: %w", err)
+	}
+
+	return nil
 }

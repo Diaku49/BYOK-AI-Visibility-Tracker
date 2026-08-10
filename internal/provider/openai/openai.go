@@ -12,16 +12,6 @@ import (
 	openai "github.com/sashabaranov/go-openai"
 )
 
-type debugTransport struct {
-	base http.RoundTripper
-}
-
-func (t debugTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	fmt.Printf("HTTP %s %s\n", req.Method, req.URL.String())
-
-	return t.base.RoundTrip(req)
-}
-
 type OpenAIProvider struct {
 	model          string
 	webSearchModel string
@@ -31,9 +21,6 @@ type OpenAIProvider struct {
 func NewOpenAIProvider() *OpenAIProvider {
 	httpcli := &http.Client{
 		Timeout: 30 * time.Second,
-		Transport: debugTransport{
-			base: http.DefaultTransport,
-		},
 	}
 
 	return &OpenAIProvider{
@@ -79,7 +66,7 @@ func (oap *OpenAIProvider) generate(
 
 	result, err := cli.CreateChatCompletion(ctx, request)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create OpenAI chat completion: %w", err)
 	}
 
 	return &result, nil
@@ -93,7 +80,7 @@ func (oap *OpenAIProvider) Run(
 ) (*p.PromptRunResult, error) {
 	client, err := oap.NewClient(baseURL, apiKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create OpenAI client: %w", err)
 	}
 
 	model := req.Model
@@ -137,12 +124,12 @@ func (oap *OpenAIProvider) AnalyzeScan(
 ) (*analyzer.ScanAnalysisResult, error) {
 	client, err := oap.NewClient(nil, apiKey)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create OpenAI analysis client: %w", err)
 	}
 
 	prompt, err := analyzer.BuildAnalyzerPrompt(input)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("build OpenAI analysis prompt: %w", err)
 	}
 
 	resp, err := client.CreateChatCompletion(
@@ -173,7 +160,7 @@ func (oap *OpenAIProvider) AnalyzeScan(
 		},
 	)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create OpenAI scan analysis: %w", err)
 	}
 
 	if len(resp.Choices) == 0 {

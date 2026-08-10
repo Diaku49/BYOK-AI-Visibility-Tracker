@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"github.com/Diaku49/AI-visibility-tracker/internal/db"
 	"github.com/google/uuid"
@@ -24,7 +25,7 @@ func (s *Store) GetPromptByIDForUser(ctx context.Context, promptID, userID uuid.
 		if IsNotFound(err) {
 			return db.Prompt{}, ErrPromptNotFound
 		}
-		return db.Prompt{}, err
+		return db.Prompt{}, fmt.Errorf("get prompt for user: %w", err)
 	}
 
 	return prompt, nil
@@ -34,10 +35,15 @@ func (s *Store) ListPromptsByProjectForUser(
 	ctx context.Context,
 	projectID, userID uuid.UUID,
 ) ([]db.Prompt, error) {
-	return s.query.ListPromptsByProjectForUser(ctx, db.ListPromptsByProjectForUserParams{
+	prompts, err := s.query.ListPromptsByProjectForUser(ctx, db.ListPromptsByProjectForUserParams{
 		ProjectID: projectID,
 		UserID:    userID,
 	})
+	if err != nil {
+		return nil, fmt.Errorf("list prompts for project and user: %w", err)
+	}
+
+	return prompts, nil
 }
 
 func (s *Store) UpdatePromptForUser(
@@ -57,7 +63,7 @@ func (s *Store) UpdatePromptForUser(
 		if IsNotFound(err) {
 			return db.Prompt{}, ErrPromptNotFound
 		}
-		return db.Prompt{}, err
+		return db.Prompt{}, fmt.Errorf("update prompt for user: %w", err)
 	}
 
 	return prompt, nil

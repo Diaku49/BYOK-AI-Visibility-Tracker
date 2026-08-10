@@ -3,6 +3,7 @@ package analyzer
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/google/uuid"
 )
@@ -83,7 +84,7 @@ type ScanAnalysisResponse = ScanAnalysisResult
 func BuildAnalyzerPrompt(input ScanAnalysisInput) (string, error) {
 	b, err := json.MarshalIndent(input, "", "  ")
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("marshal scan analysis input: %w", err)
 	}
 
 	return "Analyze this scan input and return the structured JSON result:\n\n" + string(b), nil

@@ -1,6 +1,8 @@
 package pkg
 
 import (
+	"fmt"
+
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/google/uuid"
 )
@@ -25,7 +27,12 @@ func GenerateJWT(userID uuid.UUID, tier string, secretKey []byte) (string, error
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	secret := []byte(secretKey)
-	return token.SignedString(secret)
+	signedToken, err := token.SignedString(secret)
+	if err != nil {
+		return "", fmt.Errorf("sign JWT: %w", err)
+	}
+
+	return signedToken, nil
 }
 
 func ValidateToken(tokenString string, secretKey []byte) (*JWTCliams, error) {
@@ -37,7 +44,7 @@ func ValidateToken(tokenString string, secretKey []byte) (*JWTCliams, error) {
 	})
 
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("parse JWT: %w", err)
 	}
 
 	if claims, ok := token.Claims.(*JWTCliams); ok && token.Valid {

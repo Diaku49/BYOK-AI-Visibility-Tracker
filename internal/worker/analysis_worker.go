@@ -28,17 +28,16 @@ var (
 	errMessageClaimScanForAnalysis   = "failed to claim scan for analysis"
 )
 
-//********** Needs Complete Refactoring **********
-
-func (wc *WorkerCoordinator) GetAnalysisWork(ctx context.Context) ([]AnalysisTask, error) {
+func (wc *WorkerCoordinator) GetAnalysisWork(ctx context.Context) ([]AnalysisTask, []error, error) {
 	var tasks []AnalysisTask
+	var taskErrors []error
 	rows, err := wc.st.GetScansForAnalysis(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("get scans for analysis: %w", err)
+		return nil, nil, fmt.Errorf("get scans for analysis: %w", err)
 	}
 
 	if len(rows) == 0 {
-		return nil, nil
+		return nil, nil, nil
 	}
 
 	// Group rows by scan_id. Query is ordered by scan_id so consecutive rows belong to the same scan.
@@ -70,16 +69,12 @@ func (wc *WorkerCoordinator) GetAnalysisWork(ctx context.Context) ([]AnalysisTas
 
 		competitors, err := wc.st.ListCompetitorsByProject(ctx, g.projectID)
 		if err != nil {
-			errMsg := errMessageListCompetitors
-			wc.l.Error(errMsg,
-				"scan_id", scanID,
-				"project_id", g.projectID,
-				"error", err,
-			)
-
+			taskErr := fmt.Errorf("%s (scan_id=%s): %w", errMessageListCompetitors, scanID, err)
+			errMsg := taskErr.Error()
 			if _, stErr := wc.st.UpdateScanStateByID(ctx, scanID, "failed", &errMsg); stErr != nil {
-				wc.l.Error(errMessageUpdateScanStateFailed, "scan_id", scanID, "error", stErr)
+				taskErr = fmt.Errorf("%w; %s: %w", taskErr, errMessageUpdateScanStateFailed, stErr)
 			}
+			taskErrors = append(taskErrors, taskErr)
 			continue
 		}
 
@@ -130,13 +125,12 @@ func (wc *WorkerCoordinator) GetAnalysisWork(ctx context.Context) ([]AnalysisTas
 		}
 
 		if engineID == "" {
-			errMsg := errMessageNoUsableProviderKey
-			wc.l.Error(errMsg,
-				"scan_id", scanID,
-			)
+			taskErr := fmt.Errorf("%s (scan_id=%s)", errMessageNoUsableProviderKey, scanID)
+			errMsg := taskErr.Error()
 			if _, stErr := wc.st.UpdateScanStateByID(ctx, scanID, "failed", &errMsg); stErr != nil {
-				wc.l.Error(errMessageUpdateScanStateFailed, "scan_id", scanID, "error", stErr)
+				taskErr = fmt.Errorf("%w; %s: %w", taskErr, errMessageUpdateScanStateFailed, stErr)
 			}
+			taskErrors = append(taskErrors, taskErr)
 			continue
 		}
 
@@ -160,82 +154,39 @@ func (wc *WorkerCoordinator) GetAnalysisWork(ctx context.Context) ([]AnalysisTas
 		tasks = append(tasks, task)
 	}
 
-	wc.l.Info("dispatched analysis jobs", "scans", len(scanOrder))
-
-	return tasks, nil
+	return tasks, taskErrors, nil
 }
 
-func (wc *WorkerCoordinator) ExecuteAnalysis(task *AnalysisTask, apiKey string) {
+func (wc *WorkerCoordinator) ExecuteAnalysis(task *AnalysisTask, apiKey string) error {
 	ctx := context.Background()
 	analysisCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
 	p, ok := wc.providerRegistry[task.EngineID]
 	if !ok {
-		wc.l.Error(errMessageUnknownAnalysisEngine, "engine_id", task.EngineID, "scan_id", task.Input.ScanID)
-		errMsg := errMessageUnknownAnalysisEngine
-		now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
-		if _, stErr := wc.st.UpdateScanByID(ctx, db.UpdateScanParams{
-			ID:            task.Input.ScanID,
-			ProjectID:     task.ProjectID,
-			Status:        "failed",
-			TotalRuns:     task.TotalRuns,
-			CompletedRuns: task.CompletedRuns,
-			FailedRuns:    task.FailedRuns,
-			Error:         &errMsg,
-			FinishedAt:    now,
-		}); stErr != nil {
-			wc.l.Error(errMessageUpdateScanAfterFailure, "scan_id", task.Input.ScanID, "error", stErr)
-		}
-		return
+		return fmt.Errorf("%s: %q", errMessageUnknownAnalysisEngine, task.EngineID)
 	}
 
 	result, err := p.AnalyzeScan(analysisCtx, apiKey, task.Input)
 	if err != nil {
-		wc.l.Error(errMessageAnalysisFailed, "scan_id", task.Input.ScanID, "error", err)
-
-		errMsg := err.Error()
-		now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
-		if _, stErr := wc.st.UpdateScanByID(ctx, db.UpdateScanParams{
-			ID:            task.Input.ScanID,
-			ProjectID:     task.ProjectID,
-			Status:        "failed",
-			TotalRuns:     task.TotalRuns,
-			CompletedRuns: task.CompletedRuns,
-			FailedRuns:    task.FailedRuns,
-			Error:         &errMsg,
-			FinishedAt:    now,
-		}); stErr != nil {
-			wc.l.Error(errMessageUpdateScanAfterFailure, "scan_id", task.Input.ScanID, "error", stErr)
-		}
-		return
+		return fmt.Errorf("%s: %w", errMessageAnalysisFailed, err)
 	}
 
 	if err := validateAnalysisRuns(task.Input.Runs, result.Runs); err != nil {
-		wc.l.Error(errMessageInvalidAnalysisResult, "scan_id", task.Input.ScanID, "error", err)
-
-		errMsg := err.Error()
-		now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
-		if _, stErr := wc.st.UpdateScanByID(ctx, db.UpdateScanParams{
-			ID:            task.Input.ScanID,
-			ProjectID:     task.ProjectID,
-			Status:        "failed",
-			TotalRuns:     task.TotalRuns,
-			CompletedRuns: task.CompletedRuns,
-			FailedRuns:    task.FailedRuns,
-			Error:         &errMsg,
-			FinishedAt:    now,
-		}); stErr != nil {
-			wc.l.Error(errMessageUpdateScanAfterFailure, "scan_id", task.Input.ScanID, "error", stErr)
-		}
-		return
+		return fmt.Errorf("%s: %w", errMessageInvalidAnalysisResult, err)
 	}
 
 	// Persist per-run analysis results.
 	batch := []db.UpdateScanRunAnalysisParams{}
 	for _, run := range result.Runs {
-		competitorsJSON, _ := json.Marshal(run.CompetitorsMentioned)
-		citedDomainsJSON, _ := json.Marshal(run.CitedDomains)
+		competitorsJSON, err := json.Marshal(run.CompetitorsMentioned)
+		if err != nil {
+			return fmt.Errorf("marshal competitors mentioned for scan run %s: %w", run.ScanRunID, err)
+		}
+		citedDomainsJSON, err := json.Marshal(run.CitedDomains)
+		if err != nil {
+			return fmt.Errorf("marshal cited domains for scan run %s: %w", run.ScanRunID, err)
+		}
 
 		batch = append(batch, db.UpdateScanRunAnalysisParams{
 			ID:                   run.ScanRunID,
@@ -245,7 +196,10 @@ func (wc *WorkerCoordinator) ExecuteAnalysis(task *AnalysisTask, apiKey string) 
 			CitedDomains:         citedDomainsJSON,
 		})
 	}
-	summaryJSON, _ := json.Marshal(result.Summary)
+	summaryJSON, err := json.Marshal(result.Summary)
+	if err != nil {
+		return fmt.Errorf("marshal scan analysis summary: %w", err)
+	}
 	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
 	if err := wc.st.UpdateScanAnalysis(ctx, batch, db.UpdateScanParams{
 		ID:            task.Input.ScanID,
@@ -257,11 +211,10 @@ func (wc *WorkerCoordinator) ExecuteAnalysis(task *AnalysisTask, apiKey string) 
 		Summary:       summaryJSON,
 		FinishedAt:    now,
 	}); err != nil {
-		wc.l.Error(errMessagePersistScanAnalysis, "scan_id", task.Input.ScanID, "error", err)
-		return
+		return fmt.Errorf("%s: %w", errMessagePersistScanAnalysis, err)
 	}
 
-	wc.l.Info("analysis completed", "scan_id", task.Input.ScanID, "runs_analyzed", len(result.Runs))
+	return nil
 }
 
 func (wc *WorkerCoordinator) StartAnalysisWorker(c chan *AnalysisTask) {
@@ -280,17 +233,44 @@ func (wc *WorkerCoordinator) StartAnalysisWorker(c chan *AnalysisTask) {
 
 		apiKey, err := wc.keyCipher.Decrypt(task.EncryptedKey, task.KeyNonce)
 		if err != nil {
-			errMsg := fmt.Sprintf("%s: %v", errMessageDecryptAnalysisKey, err)
-			wc.l.Error(errMessageDecryptAnalysisKey, "scan_id", task.Input.ScanID, "error", err)
-			if _, stErr := wc.st.UpdateScanStateByID(ctx, task.Input.ScanID, "failed", &errMsg); stErr != nil {
-				wc.l.Error(errMessageUpdateScanStateFailed, "scan_id", task.Input.ScanID, "error", stErr)
+			analysisErr := fmt.Errorf("%s: %w", errMessageDecryptAnalysisKey, err)
+			wc.l.Error("execute analysis", "scan_id", task.Input.ScanID, "error", analysisErr)
+			if failErr := wc.failAnalysis(ctx, task, analysisErr); failErr != nil {
+				wc.l.Error(errMessageUpdateScanAfterFailure, "scan_id", task.Input.ScanID, "error", failErr)
 			}
 			continue
 		}
 
 		wc.l.Info("analysis job received", "scan_id", task.Input.ScanID, "runs", len(task.Input.Runs))
-		wc.ExecuteAnalysis(task, string(apiKey))
+		if err := wc.ExecuteAnalysis(task, string(apiKey)); err != nil {
+			wc.l.Error("execute analysis", "scan_id", task.Input.ScanID, "error", err)
+			if failErr := wc.failAnalysis(ctx, task, err); failErr != nil {
+				wc.l.Error(errMessageUpdateScanAfterFailure, "scan_id", task.Input.ScanID, "error", failErr)
+			}
+			continue
+		}
+
+		wc.l.Info("analysis completed", "scan_id", task.Input.ScanID, "runs_analyzed", len(task.Input.Runs))
 	}
+}
+
+func (wc *WorkerCoordinator) failAnalysis(ctx context.Context, task *AnalysisTask, cause error) error {
+	errMsg := cause.Error()
+	now := pgtype.Timestamptz{Time: time.Now(), Valid: true}
+	if _, err := wc.st.UpdateScanByID(ctx, db.UpdateScanParams{
+		ID:            task.Input.ScanID,
+		ProjectID:     task.ProjectID,
+		Status:        "failed",
+		TotalRuns:     task.TotalRuns,
+		CompletedRuns: task.CompletedRuns,
+		FailedRuns:    task.FailedRuns,
+		Error:         &errMsg,
+		FinishedAt:    now,
+	}); err != nil {
+		return fmt.Errorf("%s: %w", errMessageUpdateScanAfterFailure, err)
+	}
+
+	return nil
 }
 
 func (wc *WorkerCoordinator) AnalysisTaskProducer() {
@@ -300,11 +280,17 @@ func (wc *WorkerCoordinator) AnalysisTaskProducer() {
 	for range ticker.C {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
-		if tasks, err := wc.GetAnalysisWork(ctx); err != nil {
-			wc.l.Error(errMessageGetAnalysisJob, "error", err.Error())
+		if tasks, taskErrors, err := wc.GetAnalysisWork(ctx); err != nil {
+			wc.l.Error(errMessageGetAnalysisJob, "error", err)
 		} else {
+			for _, taskErr := range taskErrors {
+				wc.l.Error("prepare analysis job", "error", taskErr)
+			}
 			for _, task := range tasks {
 				AnalysisJobs <- &task
+			}
+			if len(tasks) > 0 {
+				wc.l.Info("dispatched analysis jobs", "scans", len(tasks))
 			}
 		}
 

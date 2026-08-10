@@ -62,7 +62,6 @@ func main() {
 			baseURL,
 			model,
 			prompt,
-			i+1,
 			maxAttempts,
 			attemptTimeout,
 			retryWait,
@@ -91,7 +90,6 @@ func runOpenAIWithRetry(
 	baseURL string,
 	model string,
 	prompt string,
-	runNumber int,
 	maxAttempts int,
 	attemptTimeout time.Duration,
 	retryWait time.Duration,
@@ -118,20 +116,17 @@ func runOpenAIWithRetry(
 
 		lastErr = err
 		if !isOpenAIRetryable(err) || attempt == maxAttempts {
-			return nil, err
+			return nil, fmt.Errorf("run prompt after attempt %d: %w", attempt, err)
 		}
-
-		log.Printf("run %d attempt %d/%d failed: %v", runNumber, attempt, maxAttempts, err)
-		log.Printf("waiting %s before retry...", retryWait)
 
 		select {
 		case <-ctx.Done():
-			return nil, ctx.Err()
+			return nil, fmt.Errorf("wait before retry: %w", ctx.Err())
 		case <-time.After(retryWait):
 		}
 	}
 
-	return nil, lastErr
+	return nil, fmt.Errorf("run prompt after %d attempts: %w", maxAttempts, lastErr)
 }
 
 func isOpenAIRetryable(err error) bool {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -28,7 +29,21 @@ var (
 func (wc *WorkerCoordinator) StartScanWorker(c chan *ScanRunTask) {
 	for task := range c {
 		scanResponse := wc.ExecuteScanRun(task, 2, attemptInterval)
-		wc.l.Info("Scan ran", "ScanID", scanResponse.scanRunID)
+		if scanResponse.err != nil {
+			if errors.Is(scanResponse.err, pgx.ErrNoRows) {
+				wc.l.Info("scan run already claimed", "scan_id", task.ScanID, "run_id", task.ScanRunID)
+				continue
+			}
+
+			wc.l.Error("execute scan run", "scan_id", task.ScanID, "run_id", task.ScanRunID, "error", scanResponse.err)
+			continue
+		}
+
+		for _, warning := range scanResponse.warnings {
+			wc.l.Warn("scan run completed with warning", "scan_id", task.ScanID, "run_id", task.ScanRunID, "error", warning)
+		}
+
+		wc.l.Info("scan run completed", "scan_id", task.ScanID, "run_id", task.ScanRunID, "engine", task.EngineID)
 	}
 }
 
@@ -39,35 +54,28 @@ func (wc *WorkerCoordinator) ScanTaskProducer() {
 	for range ticker.C {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 
-		if err := wc.GetWork(ctx); err != nil {
-			wc.l.Error("Failed getting job", "Error", err.Error())
+		if count, err := wc.GetWork(ctx); err != nil {
+			wc.l.Error("get scan run jobs", "error", err)
+		} else if count > 0 {
+			wc.l.Info("dispatched scan run tasks", "count", count)
 		}
 		cancel()
 	}
 }
 
 func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, retryInterval time.Duration) *ScanRunResult {
-	scanResponse := ScanRunResult{scanRunID: j.ScanRunID}
+	scanResponse := ScanRunResult{}
 	ctx := context.Background()
 
 	if _, err := wc.st.ClaimScanRun(ctx, j.ScanRunID, j.ScanID); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			wc.l.Info("scan run already claimed", "scan_id", j.ScanID, "run_id", j.ScanRunID)
-			return &scanResponse
-		}
-
-		wc.l.Error(errMessageClaimScanRun, "scan_id", j.ScanID, "run_id", j.ScanRunID, "error", err)
+		scanResponse.err = fmt.Errorf("%s: %w", errMessageClaimScanRun, err)
 		return &scanResponse
 	}
 
 	apiKey, err := wc.keyCipher.Decrypt(j.EncryptedKey, j.KeyNonce)
 	if err != nil {
-		errMsg := errMessageDecryptProviderKey
-		scanResponse.error = errMsg
-		wc.l.Error(errMsg, "scan_run_id", j.ScanRunID, "provider_key_id", j.ProviderKeyID, "error", err)
-		if stErr := wc.st.MarkScanRunFailed(ctx, j.ScanRunID, j.ScanID, &errMsg); stErr != nil {
-			wc.l.Error(errMessageMarkScanRunFailed, "run_id", j.ScanRunID, "error", stErr)
-		}
+		runErr := fmt.Errorf("%s: %w", errMessageDecryptProviderKey, err)
+		scanResponse.err = wc.markScanRunFailed(ctx, j, runErr)
 		return &scanResponse
 	}
 
@@ -76,18 +84,8 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 
 		p, ok := wc.providerRegistry[j.EngineID]
 		if !ok {
-			errMsg := errMessageUndefinedEngine
-			wc.l.Error(errMsg, "ScanID", j.ScanID, "RunID", j.ScanRunID, "Engine", j.EngineID)
-			scanResponse = ScanRunResult{
-				scanRunID: j.ScanRunID,
-				error:     errMsg,
-			}
-
-			if stErr := wc.st.MarkScanRunFailed(ctx, j.ScanRunID, j.ScanID, &errMsg); stErr != nil {
-				wc.l.Error(errMessageMarkScanRunFailed, "RunID", j.ScanRunID, "error", stErr)
-			}
-
 			cancel()
+			scanResponse.err = wc.markScanRunFailed(ctx, j, errors.New(errMessageUndefinedEngine))
 			return &scanResponse
 		}
 
@@ -95,18 +93,8 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 		cancel()
 
 		if err != nil {
-			wc.l.Error(err.Error(), "ScanID", j.ScanID, "RunID", j.ScanRunID, "Engine", j.EngineID)
-			errMsg := err.Error()
-			scanResponse = ScanRunResult{
-				scanRunID: j.ScanRunID,
-				error:     errMsg,
-			}
-
 			if !isRetryable(err) || retryAttempt == 1 {
-				// Terminal failure — persist failed state
-				if stErr := wc.st.MarkScanRunFailed(ctx, j.ScanRunID, j.ScanID, &errMsg); stErr != nil {
-					wc.l.Error(errMessageMarkScanRunFailed, "RunID", j.ScanRunID, "error", stErr)
-				}
+				scanResponse.err = wc.markScanRunFailed(ctx, j, fmt.Errorf("run provider request: %w", err))
 				break
 			}
 
@@ -114,16 +102,10 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 			continue
 		}
 
-		scanResponse = ScanRunResult{
-			scanRunID: j.ScanRunID,
-			result:    *result,
-			error:     "",
-		}
-
-		// Marshal raw response for storage - not gonna be used for anything else, just for logging and debugging
+		// Raw responses are diagnostic only; keep the successful result when serialization fails.
 		rawJSON, err := json.Marshal(result.Raw)
 		if err != nil {
-			wc.l.Error(errMessageMarshalRawResponse, "RunID", j.ScanRunID, "error", err)
+			scanResponse.warnings = append(scanResponse.warnings, fmt.Errorf("%s: %w", errMessageMarshalRawResponse, err))
 		}
 
 		// Update the scan run with results
@@ -141,15 +123,23 @@ func (wc *WorkerCoordinator) ExecuteScanRun(j *ScanRunTask, retryAttempt int, re
 			RawResponse:   rawJSON,
 			FinishedAt:    now,
 		}); stErr != nil {
-			wc.l.Error(errMessageMarkScanRunCompleted, "RunID", j.ScanRunID, "error", stErr)
+			scanResponse.err = fmt.Errorf("%s: %w", errMessageMarkScanRunCompleted, stErr)
 			return &scanResponse
 		}
 
-		wc.l.Info("scan run completed", "scan_id", j.ScanID, "run_id", j.ScanRunID, "engine", j.EngineID)
 		break
 	}
 
 	return &scanResponse
+}
+
+func (wc *WorkerCoordinator) markScanRunFailed(ctx context.Context, task *ScanRunTask, cause error) error {
+	errMsg := cause.Error()
+	if err := wc.st.MarkScanRunFailed(ctx, task.ScanRunID, task.ScanID, &errMsg); err != nil {
+		return fmt.Errorf("%w; %s: %w", cause, errMessageMarkScanRunFailed, err)
+	}
+
+	return cause
 }
 
 func isRetryable(err error) bool {
