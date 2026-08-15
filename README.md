@@ -64,3 +64,25 @@ go test ./...
 go vet ./...
 sqlc vet
 ```
+
+## Docker
+
+The API container expects PostgreSQL to be available through `DATABASE_URL`. It does not run database migrations automatically.
+
+Build the image:
+
+```sh
+docker build -t ai-visibility-tracker .
+```
+
+Run the API:
+
+```sh
+docker run --rm -p 8080:8080 \
+  -e DATABASE_URL='postgres://user:password@host:5432/database?sslmode=disable' \
+  -e AITRACKER_MASTER_KEY='base64-encoded-32-byte-key' \
+  -e AITRACKER_JWT_SECRET='replace-with-a-secure-secret' \
+  ai-visibility-tracker
+```
+
+`AITRACKER_PORT` is optional and defaults to `8080`. The container exposes port `8080`; map a different host port with Docker if needed.
