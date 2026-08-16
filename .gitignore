@@ -23,13 +23,17 @@ profile.cov
 # Go workspace file
 go.work
 go.work.sum
-.idea
 # env file
 .env
 
 #
 CLAUDE.MD
 
-# Editor/IDE
-# .idea/
-# .vscode/
+.DS_Store
+.idea/
+.vscode/
+backend/.claude/settings.local.json
+frontend/node_modules/
+frontend/.next/
+frontend/dist/
+frontend/.env.local
