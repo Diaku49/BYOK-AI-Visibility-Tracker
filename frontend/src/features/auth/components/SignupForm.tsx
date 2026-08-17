@@ -1,4 +1,4 @@
-import { Link } from 'react-router-dom'
+import { Link } from 'react-router'
 import { Button, Input } from '@/shared/components'
 import { ROUTES } from '@/shared/config/routes'
 import AuthShell from '@/features/auth/components/AuthShell'

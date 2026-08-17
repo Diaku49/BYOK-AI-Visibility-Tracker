@@ -15,11 +15,6 @@ export interface SignupPayload {
   name?: string
 }
 
-/** `data` for POST /auth/login. Signup returns `data: null`. */
-export interface LoginData {
-  token: string
-}
-
 /** What the API layer hands back: the server message, plus a token on login. */
 export interface AuthResult {
   message: string

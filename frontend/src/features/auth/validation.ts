@@ -2,7 +2,8 @@ import { ApiError } from '@/shared/api/client'
 
 /** Client-side validation. The backend remains the authority. */
 
-export const PASSWORD_MIN_LENGTH = 8
+export const PASSWORD_MIN_LENGTH = 7
+export const NAME_MIN_LENGTH = 3
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -25,7 +26,7 @@ export function validatePassword(value: string): string | undefined {
 export function validateName(value: string): string | undefined {
   const name = value.trim()
   if (!name) return undefined
-  if (name.length < 2) return 'Minimum 2 characters'
+  if (name.length < NAME_MIN_LENGTH) return `Minimum ${NAME_MIN_LENGTH} characters`
   return undefined
 }
 

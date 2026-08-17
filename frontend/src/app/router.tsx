@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router'
 import { ROUTES } from '@/shared/config/routes'
 import HomePage from '@/pages/HomePage'
 import LoginPage from '@/pages/LoginPage'

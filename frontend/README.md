@@ -29,7 +29,7 @@ installed and there is no config. There is no test framework yet.
 
 ## Stack
 
-React 19, TypeScript, Vite 6, Tailwind CSS 4, React Router 7.
+React 19, TypeScript, Vite 6, Tailwind CSS 4, React Router 8.
 
 ## Structure
 

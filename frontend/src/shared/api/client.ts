@@ -1,10 +1,10 @@
 import { readAuthToken } from '@/shared/config/storage'
 import type { ApiEnvelope } from '@/shared/types'
 
-/** Dummy backend until the real API is deployed. Override in .env.local. */
-const DUMMY_BASE_URL = 'https://dummy.byok-tracker.dev/api/v1'
+/** Local Go API default. Deployments override this in their environment. */
+const DEFAULT_BASE_URL = 'http://localhost:8080'
 
-const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? DUMMY_BASE_URL
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? DEFAULT_BASE_URL
 
 export class ApiError extends Error {
   constructor(

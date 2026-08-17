@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { ROUTES } from '@/shared/config/routes'
 import { authApi } from '@/features/auth/api/authApi'
 import {

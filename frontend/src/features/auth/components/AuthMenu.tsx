@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom'
+import { useNavigate } from 'react-router'
 import { Button } from '@/shared/components'
 import { ROUTES } from '@/shared/config/routes'
 import { useAuthSession } from '@/features/auth/hooks/useAuthSession'

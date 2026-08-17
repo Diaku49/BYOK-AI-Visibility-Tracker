@@ -1,28 +1,27 @@
 import { apiClient, ApiError } from '@/shared/api/client'
 import type {
   AuthResult,
-  LoginData,
   LoginPayload,
   SignupPayload,
   SignupResult,
 } from '@/features/auth/types'
 
 const ENDPOINTS = {
-  login: '/auth/login',
-  signup: '/auth/signup',
+  signup: '/user',
+  login: '/user/login',
 } as const
 
 export const authApi = {
   /**
-   * POST /auth/login -> { message, data: { token } }
+   * POST /user/login -> { message, data: "<jwt>" }
    * Sends no Authorization header — there is no session yet.
    */
   async login(payload: LoginPayload): Promise<AuthResult> {
-    const { message, data } = await apiClient.post<LoginData>(ENDPOINTS.login, payload, {
+    const { message, data } = await apiClient.post<string>(ENDPOINTS.login, payload, {
       auth: false,
     })
 
-    const token = data?.token
+    const token = data
     if (typeof token !== 'string' || token.length === 0) {
       // 2xx with no usable token means the contract broke upstream — fail
       // loudly rather than persisting an empty session.
@@ -33,7 +32,7 @@ export const authApi = {
   },
 
   /**
-   * POST /auth/signup -> { message, data: null }
+   * POST /user -> { message, data?: null }
    * No session is established; the user logs in afterwards.
    */
   async signup(payload: SignupPayload): Promise<SignupResult> {
